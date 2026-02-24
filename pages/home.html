@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TuBlox — Home</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <a href="/home" class="logo">
+                <img src="/img/logo.svg" alt="TuBlox">
+                <span>TuBlox</span>
+            </a>
+            <div class="nav-right">
+                <span class="nav-user"><strong class="username">Player</strong></span>
+                <button id="logout-btn" class="btn btn-ghost">Sign Out</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="home-page">
+        <div class="home-content">
+            <div class="welcome">
+                <h1>Welcome, <span class="username">Player</span></h1>
+                <p>Ready to play?</p>
+            </div>
+
+            <div class="stats">
+                <div class="card stat">
+                    <div class="stat-value" id="user-level">1</div>
+                    <div class="stat-label">Level</div>
+                </div>
+                <div class="card stat">
+                    <div class="stat-value" id="user-coins">0</div>
+                    <div class="stat-label">Coins</div>
+                </div>
+                <div class="card stat">
+                    <div class="stat-value" id="user-playtime">0h</div>
+                    <div class="stat-label">Time</div>
+                </div>
+            </div>
+
+            <div class="card play-card">
+                <h2>Launch Game</h2>
+                <p>Download the launcher to start playing</p>
+                <button class="btn btn-primary btn-lg">
+                    <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    Play
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/main.js"></script>
+</body>
+</html>

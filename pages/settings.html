@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TuBlox — Settings</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <a href="/" class="logo">
+                <img src="/img/logo.svg" alt="TuBlox">
+                <span>TuBlox</span>
+            </a>
+            <div class="nav-right">
+                <a href="/home" class="btn btn-ghost">Home</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="settings-page">
+        <div class="settings-content">
+            <h1>Settings</h1>
+            
+            <form id="profile-form" class="settings-form">
+                <div class="form-section">
+                    <h2>Profile</h2>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Odil ID</label>
+                        <input type="text" class="form-input" id="odil-id" disabled>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Custom Tag (optional)</label>
+                        <input type="text" class="form-input" id="odil-tag" placeholder="your_custom_tag">
+                        <span class="form-hint">Others can find you by @tag or ID</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Display Name</label>
+                        <input type="text" class="form-input" id="display-name" placeholder="Your display name" maxlength="30">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Bio</label>
+                        <textarea class="form-input form-textarea" id="bio" placeholder="Tell us about yourself..." maxlength="200"></textarea>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+            
+            <form id="avatar-form" class="settings-form">
+                <div class="form-section">
+                    <h2>Avatar</h2>
+                    <p class="form-hint">Upload your 3D avatar model (FBX, GLB, GLTF - max 10MB)</p>
+                    
+                    <div class="avatar-upload">
+                        <div class="avatar-preview" id="avatar-preview">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                        </div>
+                        <div class="avatar-actions">
+                            <input type="file" id="avatar-input" accept=".fbx,.glb,.gltf" hidden>
+                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('avatar-input').click()">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="17 8 12 3 7 8"/>
+                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                                </svg>
+                                Upload Model
+                            </button>
+                            <span class="avatar-filename" id="avatar-filename"></span>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TuBlox — Game</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <a href="/home" class="logo">
+                <img src="/img/logo.svg" alt="TuBlox">
+                <span>TuBlox</span>
+            </a>
+            <div class="nav-right">
+                <a href="/games" class="btn btn-ghost">Games</a>
+                <a href="/users" class="btn btn-ghost">Players</a>
+                <span class="nav-user"><strong class="username">Player</strong> <span class="odil-id">#0</span></span>
+                <button id="logout-btn" class="btn btn-ghost">Sign Out</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="game-page">
+        <div id="game-content">
+            <div class="loading-placeholder large">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Play Modal -->
+    <div class="modal" id="play-modal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Launching Game</h3>
+                <button class="modal-close" onclick="closePlayModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="launch-status" id="launch-status">
+                    <div class="spinner"></div>
+                    <p>Starting TuBlox Client...</p>
+                </div>
+                <div class="launch-download" id="launch-download" style="display:none;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="download-icon">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    <h4>TuBlox Client Required</h4>
+                    <p>Download and install the client to play</p>
+                    <a href="/download/TuBloxSetup.exe" class="btn btn-primary">
+                        Download Client
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/main.js"></script>
+</body>
+</html>

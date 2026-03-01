@@ -14,7 +14,9 @@
                 <span>TuBlox</span>
             </a>
             <div class="nav-right">
-                <span class="nav-user"><strong class="username">Player</strong></span>
+                <a href="/games" class="btn btn-ghost">Games</a>
+                <a href="/users" class="btn btn-ghost">Players</a>
+                <span class="nav-user"><strong class="username">Player</strong> <span class="odil-id">#0</span></span>
                 <button id="logout-btn" class="btn btn-ghost">Sign Out</button>
             </div>
         </div>
@@ -22,11 +24,13 @@
 
     <div class="home-page">
         <div class="home-content">
+            <!-- Welcome -->
             <div class="welcome">
                 <h1>Welcome, <span class="username">Player</span></h1>
-                <p>Ready to play?</p>
+                <p>ID: <strong class="odil-id">#0</strong></p>
             </div>
 
+            <!-- Stats -->
             <div class="stats">
                 <div class="card stat">
                     <div class="stat-value" id="user-level">1</div>
@@ -42,15 +46,17 @@
                 </div>
             </div>
 
-            <div class="card play-card">
-                <h2>Launch Game</h2>
-                <p>Download the launcher to start playing</p>
-                <button class="btn btn-primary btn-lg">
-                    <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
-                        <polygon points="5 3 19 12 5 21 5 3"/>
-                    </svg>
-                    Play
-                </button>
+            <!-- Featured Game -->
+            <div class="section">
+                <div class="section-header">
+                    <h2>Featured Game</h2>
+                    <a href="/games" class="btn btn-ghost btn-sm">View All</a>
+                </div>
+                <div class="featured-game-container" id="featured-game">
+                    <div class="loading-placeholder">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TuBlox — Games</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <a href="/home" class="logo">
+                <img src="/img/logo.svg" alt="TuBlox">
+                <span>TuBlox</span>
+            </a>
+            <div class="nav-right">
+                <a href="/games" class="btn btn-ghost active">Games</a>
+                <a href="/users" class="btn btn-ghost">Players</a>
+                <span class="nav-user"><strong class="username">Player</strong> <span class="odil-id">#0</span></span>
+                <button id="logout-btn" class="btn btn-ghost">Sign Out</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="games-page">
+        <div class="page-header">
+            <h1>Games</h1>
+            <p>Discover and play amazing experiences</p>
+        </div>
+
+        <div class="games-grid large" id="all-games">
+            <div class="loading-placeholder">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/main.js"></script>
+</body>
+</html>

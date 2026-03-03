@@ -20,36 +20,36 @@
             <div class="countdown">
                 <div class="countdown-timer" id="countdown">
                     <div class="countdown-item">
-                        <span class="countdown-value" id="days">00</span>
-                        <span class="countdown-label">days</span>
+                        <span class="countdown-value" id="days">000</span>
+                        <span class="countdown-label">Days</span>
                     </div>
                     <div class="countdown-item">
                         <span class="countdown-value" id="hours">00</span>
-                        <span class="countdown-label">hours</span>
+                        <span class="countdown-label">Hours</span>
                     </div>
                     <div class="countdown-item">
                         <span class="countdown-value" id="minutes">00</span>
-                        <span class="countdown-label">min</span>
+                        <span class="countdown-label">Min</span>
                     </div>
                     <div class="countdown-item">
                         <span class="countdown-value" id="seconds">00</span>
-                        <span class="countdown-label">sec</span>
+                        <span class="countdown-label">Sec</span>
                     </div>
                 </div>
             </div>
             
             <div class="countdown-date">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
                     <line x1="16" y1="2" x2="16" y2="6"/>
                     <line x1="8" y1="2" x2="8" y2="6"/>
                     <line x1="3" y1="10" x2="21" y2="10"/>
                 </svg>
-                <span>March 3, 2026 at 3:00 PM MSK</span>
+                <span>March 5, 2026 at 3:00 PM MSK</span>
             </div>
             
             <a href="/auth" class="btn btn-primary btn-lg">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;">
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                     <circle cx="12" cy="7" r="4"/>
                 </svg>
@@ -60,6 +60,34 @@
         </div>
     </div>
 
-    <script src="/js/main.js"></script>
+    <script>
+        const LAUNCH = new Date('2026-03-05T15:00:00+03:00').getTime();
+
+        function updateCountdown() {
+            const now = Date.now();
+            const diff = LAUNCH - now;
+
+            if (diff <= 0) {
+                document.getElementById('days').textContent = '0';
+                document.getElementById('hours').textContent = '00';
+                document.getElementById('minutes').textContent = '00';
+                document.getElementById('seconds').textContent = '00';
+                return;
+            }
+
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+            document.getElementById('days').textContent = days;
+            document.getElementById('hours').textContent = String(hours).padStart(2, '0');
+            document.getElementById('minutes').textContent = String(minutes).padStart(2, '0');
+            document.getElementById('seconds').textContent = String(seconds).padStart(2, '0');
+        }
+
+        updateCountdown();
+        setInterval(updateCountdown, 1000);
+    </script>
 </body>
 </html>

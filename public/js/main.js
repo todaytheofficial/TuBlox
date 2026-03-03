@@ -7,94 +7,22 @@ console.log('%c⛔ STOP!', 'font-size:24px;font-weight:bold;color:#f00;');
 console.log('%cDo not paste code here.', 'font-size:14px;color:#ff4444;');
 
 // ============================================
-// Countdown Config
+// Countdown Check (client-side)
 // ============================================
-// 3 марта 2026, 15:00 по МСК (UTC+3) = 12:00 UTC
-const LAUNCH_DATE = new Date('2026-03-03T12:00:00Z');
-
-function isBeforeLaunch() {
-    return new Date() < LAUNCH_DATE;
-}
-
-function isCountdownPage() {
-    return !!document.querySelector('.countdown-page');
-}
-
-function isAuthPage() {
-    return !!document.querySelector('.auth-tabs');
-}
-
-// ============================================
-// Redirect Logic
-// ============================================
-function checkCountdownRedirect() {
-    if (isBeforeLaunch()) {
-        // До запуска — все страницы кроме countdown и auth → редирект на countdown
-        if (!isCountdownPage() && !isAuthPage()) {
-            location.href = '/countdown';
-            return true;
-        }
-    } else {
-        // После запуска — если на countdown → редирект на главную
-        if (isCountdownPage()) {
-            location.href = '/';
-            return true;
-        }
-    }
-    return false;
-}
-
-// ============================================
-// Countdown Timer
-// ============================================
-function startCountdown() {
-    const daysEl = document.getElementById('days');
-    const hoursEl = document.getElementById('hours');
-    const minutesEl = document.getElementById('minutes');
-    const secondsEl = document.getElementById('seconds');
-
-    if (!daysEl || !hoursEl || !minutesEl || !secondsEl) return;
-
-    function pad(n) {
-        return String(n).padStart(2, '0');
-    }
-
-    function update() {
-        const now = new Date();
-        const diff = LAUNCH_DATE - now;
-
-        if (diff <= 0) {
-            // Таймер закончился — редирект на главную
-            daysEl.textContent = '00';
-            hoursEl.textContent = '00';
-            minutesEl.textContent = '00';
-            secondsEl.textContent = '00';
-            
-            // Перенаправляем на главную через 1 секунду
-            setTimeout(() => {
-                location.href = '/';
-            }, 1000);
+(function() {
+    const LAUNCH = new Date('2026-03-05T15:00:00+03:00').getTime();
+    const now = Date.now();
+    const path = window.location.pathname;
+    
+    // Если дата не наступила и мы НЕ на /, /auth, /countdown — редирект
+    if (now < LAUNCH) {
+        const allowed = ['/', '/auth', '/countdown'];
+        if (!allowed.includes(path)) {
+            window.location.href = '/countdown';
             return;
         }
-
-        const totalSeconds = Math.floor(diff / 1000);
-        const days = Math.floor(totalSeconds / 86400);
-        const hours = Math.floor((totalSeconds % 86400) / 3600);
-        const minutes = Math.floor((totalSeconds % 3600) / 60);
-        const seconds = totalSeconds % 60;
-
-        daysEl.textContent = pad(days);
-        hoursEl.textContent = pad(hours);
-        minutesEl.textContent = pad(minutes);
-        secondsEl.textContent = pad(seconds);
-
-        requestAnimationFrame(() => {
-            setTimeout(update, 1000 - (Date.now() % 1000));
-        });
     }
-
-    update();
-}
+})();
 
 // ============================================
 // Toast
@@ -154,10 +82,8 @@ async function register(e) {
         const data = await res.json();
         if (data.success) {
             toast(`Account created! ID: #${data.odilId}`);
-            // Если до запуска — возвращаем на countdown, иначе на home
-            setTimeout(() => {
-                location.href = isBeforeLaunch() ? '/countdown' : '/home';
-            }, 1000);
+            // После регистрации → countdown (не home)
+            setTimeout(() => location.href = '/countdown', 1000);
         } else {
             toast(data.message, 'error');
         }
@@ -184,10 +110,8 @@ async function login(e) {
         const data = await res.json();
         if (data.success) {
             toast('Welcome back');
-            // Если до запуска — возвращаем на countdown, иначе на home
-            setTimeout(() => {
-                location.href = isBeforeLaunch() ? '/countdown' : '/home';
-            }, 600);
+            // После логина → countdown (не home)
+            setTimeout(() => location.href = '/countdown', 600);
         } else {
             toast(data.message, 'error');
         }
@@ -198,7 +122,7 @@ async function login(e) {
 
 async function logout() {
     await fetch('/api/logout', { method: 'POST' });
-    location.href = isBeforeLaunch() ? '/countdown' : '/';
+    location.href = '/';
 }
 
 // ============================================
@@ -432,13 +356,8 @@ async function launchGame(gameId) {
             };
             
             const jsonStr = JSON.stringify(launchData);
-            console.log('Launch JSON:', jsonStr);
-            
             const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
-            console.log('Base64:', base64);
-            
             const launchUrl = 'tublox://play/' + base64;
-            console.log('Launch URL:', launchUrl);
             
             window.location.href = launchUrl;
             
@@ -578,17 +497,6 @@ function formatNumber(n) {
 // Init
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
-    // ======== COUNTDOWN REDIRECT CHECK ========
-    // Проверяем первым делом — если нужно редиректить, не грузим остальное
-    if (checkCountdownRedirect()) return;
-
-    // ======== Countdown Page ========
-    if (isCountdownPage()) {
-        startCountdown();
-        // Не грузим остальное — это страница ожидания
-        return;
-    }
-
     // Auth
     if (document.querySelector('.auth-tabs')) {
         initTabs();

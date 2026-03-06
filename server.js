@@ -161,33 +161,6 @@ const authAPI = async (req, res, next) => {
     }
 };
 
-// ============================================
-// Countdown Middleware — ДО всех роутов
-// ============================================
-const LAUNCH_DATE = new Date('2026-03-05T15:00:00+03:00'); // 5 марта 2026, 15:00 MSK
-const COUNTDOWN_ENABLED = true; // переключатель
-
-function countdownRedirect(req, res, next) {
-    if (!COUNTDOWN_ENABLED) return next();
-    if (Date.now() >= LAUNCH_DATE.getTime()) return next();
-    
-    // Пропускаем: landing (/), auth (/auth), countdown, API, статику
-    const allowed = ['/', '/auth', '/countdown'];
-    const isAllowed = allowed.includes(req.path) 
-        || req.path.startsWith('/api/') 
-        || req.path.startsWith('/css/') 
-        || req.path.startsWith('/js/') 
-        || req.path.startsWith('/img/')
-        || req.path.startsWith('/fonts/');
-    
-    if (isAllowed) return next();
-    
-    // Всё остальное → countdown
-    return res.redirect('/countdown');
-}
-
-app.use(countdownRedirect);
-
 // ═══════════════════════════════════════════════════════════════
 // PAGES
 // ═══════════════════════════════════════════════════════════════

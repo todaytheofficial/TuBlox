@@ -14,44 +14,64 @@ const app = express();
 const server = http.createServer(app);
 
 // ═══════════════════════════════════════════════════════════════
+// KEEP ALIVE - предотвращает засыпание на Render.com
+// ═══════════════════════════════════════════════════════════════
+
+const SELF_URL = process.env.RENDER_EXTERNAL_URL || process.env.SELF_URL;
+
+if (SELF_URL) {
+    setInterval(() => {
+        const https = require('https');
+        const http = require('http');
+        const client = SELF_URL.startsWith('https') ? https : http;
+        
+        client.get(SELF_URL + '/api/health', (res) => {
+            console.log('[KeepAlive] Ping sent, status:', res.statusCode);
+        }).on('error', (err) => {
+            console.log('[KeepAlive] Ping failed:', err.message);
+        });
+    }, 14 * 60 * 1000); // Каждые 14 минут (Render засыпает после 15)
+}
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+    res.json({ 
+        status: 'ok', 
+        uptime: process.uptime(),
+        games: gameServers.size,
+        connections: connectedClients.size
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════
 // WEBSOCKET SERVER
 // ═══════════════════════════════════════════════════════════════
 
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ 
+    server,
+    path: '/ws'  // Явно указываем путь
+});
 
 // Структура серверов игр
-// gameServers = { gameId: { host: ws, players: Map<odilId, {ws, data}>, hostOdilId, createdAt } }
 const gameServers = new Map();
+const connectedClients = new Map();
 
-// Все подключённые клиенты
-const connectedClients = new Map(); // odilId -> {ws, gameId, username}
-
-// Типы пакетов (синхронизировано с C++ Protocol.h)
 const PacketType = {
-    // Подключение
     CONNECT_REQUEST: 1,
     CONNECT_RESPONSE: 2,
     DISCONNECT: 3,
     PING: 4,
     PONG: 5,
-
-    // Игроки
     PLAYER_JOIN: 10,
     PLAYER_LEAVE: 11,
     PLAYER_STATE: 12,
     PLAYER_INPUT: 13,
     PLAYER_LIST: 14,
-
-    // Мир
     WORLD_STATE: 20,
     OBJECT_SPAWN: 21,
     OBJECT_DESTROY: 22,
     OBJECT_UPDATE: 23,
-
-    // Чат
     CHAT_MESSAGE: 30,
-
-    // Хост/сервер
     HOST_ASSIGN: 50,
     BUILD_DATA: 51,
     SERVER_INFO: 52
@@ -64,20 +84,29 @@ function broadcastToGame(gameId, data, excludeOdilId = null) {
     const message = typeof data === 'string' ? data : JSON.stringify(data);
     
     game.players.forEach((player, odilId) => {
-        if (odilId !== excludeOdilId && player.ws.readyState === WebSocket.OPEN) {
-            player.ws.send(message);
+        if (odilId !== excludeOdilId && player.ws && player.ws.readyState === WebSocket.OPEN) {
+            try {
+                player.ws.send(message);
+            } catch (err) {
+                console.error(`[WS] Failed to send to ${odilId}:`, err.message);
+            }
         }
     });
 }
 
 function sendToClient(ws, data) {
-    if (ws.readyState === WebSocket.OPEN) {
-        ws.send(typeof data === 'string' ? data : JSON.stringify(data));
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+            ws.send(typeof data === 'string' ? data : JSON.stringify(data));
+        } catch (err) {
+            console.error('[WS] Send error:', err.message);
+        }
     }
 }
 
 function getOrCreateGameServer(gameId) {
     if (!gameServers.has(gameId)) {
+        console.log(`[WS] Creating new game server: ${gameId}`);
         gameServers.set(gameId, {
             hostOdilId: null,
             players: new Map(),
@@ -88,19 +117,86 @@ function getOrCreateGameServer(gameId) {
     return gameServers.get(gameId);
 }
 
+function removePlayerFromGame(gameId, odilId) {
+    const game = gameServers.get(gameId);
+    if (!game) return;
+
+    const player = game.players.get(odilId);
+    if (!player) return;
+
+    console.log(`[WS] Removing player ${player.username} (#${odilId}) from ${gameId}`);
+    
+    game.players.delete(odilId);
+    connectedClients.delete(odilId);
+
+    // Уведомляем остальных
+    broadcastToGame(gameId, {
+        type: PacketType.PLAYER_LEAVE,
+        odilId: odilId
+    });
+
+    // Если ушёл хост - назначаем нового
+    if (game.hostOdilId === odilId) {
+        if (game.players.size > 0) {
+            const newHostId = game.players.keys().next().value;
+            game.hostOdilId = newHostId;
+            
+            const newHost = game.players.get(newHostId);
+            if (newHost && newHost.ws) {
+                sendToClient(newHost.ws, {
+                    type: PacketType.HOST_ASSIGN,
+                    isHost: true
+                });
+                console.log(`[WS] New host for ${gameId}: ${newHost.username}`);
+            }
+        } else {
+            // Сервер пуст - удаляем
+            gameServers.delete(gameId);
+            console.log(`[WS] Game server ${gameId} closed (empty)`);
+        }
+    }
+
+    // Обновляем БД
+    Game.findOneAndUpdate(
+        { id: gameId },
+        { activePlayers: game.players.size }
+    ).catch(err => console.error('[DB] Update error:', err));
+
+    console.log(`[WS] ${gameId} now has ${game.players.size} players`);
+}
+
 wss.on('connection', (ws, req) => {
     let clientOdilId = null;
     let clientGameId = null;
     let clientUsername = null;
+    let isConnected = false;
 
-    console.log('[WS] New connection');
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    console.log(`[WS] New connection from ${clientIp}`);
+
+    // Пинг для поддержания соединения
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
 
     ws.on('message', async (message) => {
         try {
-            const data = JSON.parse(message);
+            const data = JSON.parse(message.toString());
             
             switch (data.type) {
                 case PacketType.CONNECT_REQUEST: {
+                    // Проверяем, не подключен ли уже этот игрок
+                    const existingClient = connectedClients.get(data.odilId);
+                    if (existingClient && existingClient.ws !== ws) {
+                        // Закрываем старое соединение
+                        console.log(`[WS] Closing old connection for ${data.odilId}`);
+                        if (existingClient.gameId) {
+                            removePlayerFromGame(existingClient.gameId, data.odilId);
+                        }
+                        if (existingClient.ws && existingClient.ws.readyState === WebSocket.OPEN) {
+                            existingClient.ws.close();
+                        }
+                    }
+
                     clientOdilId = data.odilId;
                     clientGameId = data.gameId || 'tublox-world';
                     clientUsername = data.username || `Player${clientOdilId}`;
@@ -109,21 +205,37 @@ wss.on('connection', (ws, req) => {
 
                     const game = getOrCreateGameServer(clientGameId);
                     
-                    // Определяем, является ли этот игрок хостом
+                    // Определяем хоста
                     let isHost = false;
                     if (game.hostOdilId === null || game.players.size === 0) {
                         game.hostOdilId = clientOdilId;
                         isHost = true;
                         console.log(`[WS] ${clientUsername} is now HOST of ${clientGameId}`);
                         
-                        // Загружаем buildData для хоста
-                        const gameDoc = await Game.findOne({ id: clientGameId });
-                        if (gameDoc && gameDoc.buildData) {
-                            game.buildData = gameDoc.buildData;
+                        // Загружаем buildData
+                        try {
+                            const gameDoc = await Game.findOne({ id: clientGameId });
+                            if (gameDoc && gameDoc.buildData) {
+                                game.buildData = gameDoc.buildData;
+                            }
+                        } catch (err) {
+                            console.error('[DB] Load buildData error:', err);
                         }
                     }
 
-                    // Добавляем игрока
+                    // Сохраняем список существующих игроков ДО добавления нового
+                    const existingPlayers = [];
+                    game.players.forEach((player, odilId) => {
+                        if (odilId !== clientOdilId) {
+                            existingPlayers.push({
+                                odilId: odilId,
+                                username: player.username,
+                                position: player.position
+                            });
+                        }
+                    });
+
+                    // Добавляем нового игрока
                     game.players.set(clientOdilId, {
                         ws,
                         username: clientUsername,
@@ -135,18 +247,25 @@ wss.on('connection', (ws, req) => {
                         isJumping: false,
                         isSprinting: false,
                         isInWater: false,
-                        lastUpdate: Date.now()
+                        lastUpdate: Date.now(),
+                        connectedAt: Date.now()
                     });
 
-                    connectedClients.set(clientOdilId, { ws, gameId: clientGameId, username: clientUsername });
+                    connectedClients.set(clientOdilId, { 
+                        ws, 
+                        gameId: clientGameId, 
+                        username: clientUsername 
+                    });
 
-                    // Обновляем количество игроков в БД
-                    await Game.findOneAndUpdate(
+                    isConnected = true;
+
+                    // Обновляем БД
+                    Game.findOneAndUpdate(
                         { id: clientGameId },
                         { activePlayers: game.players.size }
-                    );
+                    ).catch(err => console.error('[DB] Update error:', err));
 
-                    // Отправляем ответ подключения
+                    // 1. Отправляем ответ новому игроку
                     sendToClient(ws, {
                         type: PacketType.CONNECT_RESPONSE,
                         success: true,
@@ -158,7 +277,7 @@ wss.on('connection', (ws, req) => {
                         message: 'Connected!'
                     });
 
-                    // Если хост - отправляем buildData
+                    // 2. Отправляем buildData хосту
                     if (isHost && game.buildData) {
                         sendToClient(ws, {
                             type: PacketType.BUILD_DATA,
@@ -166,21 +285,20 @@ wss.on('connection', (ws, req) => {
                         });
                     }
 
-                    // Отправляем список существующих игроков новичку
-                    game.players.forEach((player, odilId) => {
-                        if (odilId !== clientOdilId) {
-                            sendToClient(ws, {
-                                type: PacketType.PLAYER_JOIN,
-                                odilId: odilId,
-                                username: player.username,
-                                posX: player.position.x,
-                                posY: player.position.y,
-                                posZ: player.position.z
-                            });
-                        }
-                    });
+                    // 3. Отправляем список существующих игроков новичку
+                    for (const player of existingPlayers) {
+                        sendToClient(ws, {
+                            type: PacketType.PLAYER_JOIN,
+                            odilId: player.odilId,
+                            username: player.username,
+                            posX: player.position.x,
+                            posY: player.position.y,
+                            posZ: player.position.z
+                        });
+                        console.log(`[WS] Sent existing player ${player.username} to ${clientUsername}`);
+                    }
 
-                    // Уведомляем всех о новом игроке
+                    // 4. Уведомляем ДРУГИХ о новом игроке (исключаем самого себя!)
                     broadcastToGame(clientGameId, {
                         type: PacketType.PLAYER_JOIN,
                         odilId: clientOdilId,
@@ -188,64 +306,78 @@ wss.on('connection', (ws, req) => {
                         posX: 0,
                         posY: 5,
                         posZ: 0
-                    }, clientOdilId);
+                    }, clientOdilId);  // <-- ВАЖНО: исключаем себя!
 
                     console.log(`[WS] ${clientGameId} now has ${game.players.size} players`);
                     break;
                 }
 
                 case PacketType.PLAYER_STATE: {
-                    if (!clientGameId || !clientOdilId) break;
+                    if (!clientGameId || !clientOdilId || !isConnected) break;
 
                     const game = gameServers.get(clientGameId);
                     if (!game) break;
 
                     const player = game.players.get(clientOdilId);
                     if (player) {
-                        player.position = { x: data.posX, y: data.posY, z: data.posZ };
-                        player.rotation = { x: data.rotX, y: data.rotY, z: data.rotZ };
-                        player.velocity = { x: data.velX, y: data.velY, z: data.velZ };
+                        player.position = { 
+                            x: data.posX || 0, 
+                            y: data.posY || 0, 
+                            z: data.posZ || 0 
+                        };
+                        player.rotation = { 
+                            x: data.rotX || 0, 
+                            y: data.rotY || 0, 
+                            z: data.rotZ || 0 
+                        };
+                        player.velocity = { 
+                            x: data.velX || 0, 
+                            y: data.velY || 0, 
+                            z: data.velZ || 0 
+                        };
                         player.animationId = data.animationId || 0;
-                        player.isGrounded = data.isGrounded || false;
-                        player.isJumping = data.isJumping || false;
-                        player.isSprinting = data.isSprinting || false;
-                        player.isInWater = data.isInWater || false;
+                        player.isGrounded = !!data.isGrounded;
+                        player.isJumping = !!data.isJumping;
+                        player.isSprinting = !!data.isSprinting;
+                        player.isInWater = !!data.isInWater;
                         player.lastUpdate = Date.now();
                     }
 
-                    // Рассылаем состояние другим игрокам
+                    // Рассылаем другим
                     broadcastToGame(clientGameId, {
                         type: PacketType.PLAYER_STATE,
                         odilId: clientOdilId,
-                        posX: data.posX,
-                        posY: data.posY,
-                        posZ: data.posZ,
-                        rotX: data.rotX,
-                        rotY: data.rotY,
-                        rotZ: data.rotZ,
-                        velX: data.velX,
-                        velY: data.velY,
-                        velZ: data.velZ,
+                        posX: data.posX || 0,
+                        posY: data.posY || 0,
+                        posZ: data.posZ || 0,
+                        rotX: data.rotX || 0,
+                        rotY: data.rotY || 0,
+                        rotZ: data.rotZ || 0,
+                        velX: data.velX || 0,
+                        velY: data.velY || 0,
+                        velZ: data.velZ || 0,
                         animationId: data.animationId || 0,
-                        isGrounded: data.isGrounded || false,
-                        isJumping: data.isJumping || false,
-                        isSprinting: data.isSprinting || false,
-                        isInWater: data.isInWater || false
+                        isGrounded: !!data.isGrounded,
+                        isJumping: !!data.isJumping,
+                        isSprinting: !!data.isSprinting,
+                        isInWater: !!data.isInWater
                     }, clientOdilId);
                     break;
                 }
 
                 case PacketType.CHAT_MESSAGE: {
-                    if (!clientGameId) break;
+                    if (!clientGameId || !isConnected) break;
 
+                    const safeMessage = (data.message || '').substring(0, 200);
+                    
                     broadcastToGame(clientGameId, {
                         type: PacketType.CHAT_MESSAGE,
                         odilId: clientOdilId,
                         username: clientUsername,
-                        message: data.message
+                        message: safeMessage
                     });
                     
-                    console.log(`[Chat] ${clientUsername}: ${data.message}`);
+                    console.log(`[Chat] ${clientUsername}: ${safeMessage}`);
                     break;
                 }
 
@@ -259,7 +391,9 @@ wss.on('connection', (ws, req) => {
                 }
 
                 case PacketType.DISCONNECT: {
-                    // Обработка будет в ws.on('close')
+                    console.log(`[WS] Disconnect request from ${clientUsername}`);
+                    isConnected = false;
+                    ws.close();
                     break;
                 }
             }
@@ -268,74 +402,61 @@ wss.on('connection', (ws, req) => {
         }
     });
 
-    ws.on('close', async () => {
-        console.log(`[WS] Disconnected: ${clientUsername} (#${clientOdilId})`);
+    ws.on('close', (code, reason) => {
+        console.log(`[WS] Closed: ${clientUsername} (#${clientOdilId}), code: ${code}`);
 
-        if (clientGameId && clientOdilId) {
-            const game = gameServers.get(clientGameId);
-            
-            if (game) {
-                game.players.delete(clientOdilId);
-                
-                // Уведомляем других
-                broadcastToGame(clientGameId, {
-                    type: PacketType.PLAYER_LEAVE,
-                    odilId: clientOdilId
-                });
-
-                // Если ушёл хост - назначаем нового
-                if (game.hostOdilId === clientOdilId) {
-                    if (game.players.size > 0) {
-                        const newHostId = game.players.keys().next().value;
-                        game.hostOdilId = newHostId;
-                        
-                        const newHost = game.players.get(newHostId);
-                        if (newHost) {
-                            sendToClient(newHost.ws, {
-                                type: PacketType.HOST_ASSIGN,
-                                isHost: true
-                            });
-                            console.log(`[WS] New host for ${clientGameId}: ${newHost.username}`);
-                        }
-                    } else {
-                        // Сервер пуст - удаляем
-                        gameServers.delete(clientGameId);
-                        console.log(`[WS] Game server ${clientGameId} closed (empty)`);
-                    }
-                }
-
-                // Обновляем количество игроков
-                await Game.findOneAndUpdate(
-                    { id: clientGameId },
-                    { activePlayers: game ? game.players.size : 0 }
-                );
-            }
+        if (clientGameId && clientOdilId && isConnected) {
+            removePlayerFromGame(clientGameId, clientOdilId);
         }
-
-        connectedClients.delete(clientOdilId);
+        
+        isConnected = false;
     });
 
     ws.on('error', (err) => {
-        console.error('[WS] Error:', err);
+        console.error(`[WS] Error for ${clientUsername}:`, err.message);
     });
 });
 
-// Периодическая проверка таймаутов
+// Пинг всех клиентов для обнаружения мёртвых соединений
+const pingInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) {
+            console.log('[WS] Terminating dead connection');
+            return ws.terminate();
+        }
+        ws.isAlive = false;
+        ws.ping();
+    });
+}, 30000);
+
+wss.on('close', () => {
+    clearInterval(pingInterval);
+});
+
+// Проверка таймаутов игроков
 setInterval(() => {
     const now = Date.now();
     
     gameServers.forEach((game, gameId) => {
+        const toRemove = [];
+        
         game.players.forEach((player, odilId) => {
-            // Таймаут 30 секунд
-            if (now - player.lastUpdate > 30000) {
+            // Таймаут 60 секунд без обновлений
+            if (now - player.lastUpdate > 60000) {
                 console.log(`[WS] Timeout: ${player.username} in ${gameId}`);
-                if (player.ws.readyState === WebSocket.OPEN) {
-                    player.ws.close();
-                }
+                toRemove.push(odilId);
             }
         });
+
+        toRemove.forEach(odilId => {
+            const player = game.players.get(odilId);
+            if (player && player.ws) {
+                player.ws.close();
+            }
+            removePlayerFromGame(gameId, odilId);
+        });
     });
-}, 10000);
+}, 15000);
 
 // ═══════════════════════════════════════════════════════════════
 // EXPRESS MIDDLEWARE
@@ -803,7 +924,6 @@ app.get('/api/game/:id/servers', async (req, res) => {
             });
         }
 
-        // Для простоты — один "сервер" на игру
         const hostPlayer = game.players.get(game.hostOdilId);
         
         res.json({
@@ -814,8 +934,7 @@ app.get('/api/game/:id/servers', async (req, res) => {
                 players: game.players.size,
                 maxPlayers: 50,
                 hostOdilId: game.hostOdilId,
-                hostUsername: hostPlayer?.username || 'Unknown',
-                ping: 0 // Можно добавить реальный пинг
+                hostUsername: hostPlayer?.username || 'Unknown'
             }]
         });
     } catch (err) {
@@ -850,12 +969,16 @@ app.post('/api/game/launch', authAPI, async (req, res) => {
         
         console.log(`[Launch] ${req.user.username} launching ${gameId}`);
         
-        // Возвращаем WebSocket endpoint
+        // ВАЖНО: Возвращаем правильный хост для продакшена!
+        const wsHost = process.env.RENDER_EXTERNAL_HOSTNAME || 
+                       process.env.WS_HOST || 
+                       'tublox.onrender.com';
+        
         res.json({ 
             success: true, 
             token: launchToken,
-            wsHost: process.env.WS_HOST || 'localhost',
-            wsPort: parseInt(process.env.PORT) || 3000,
+            wsHost: wsHost,
+            wsPort: 443,  // Всегда 443 для wss://
             gameId: game.id
         });
     } catch (err) {
@@ -876,13 +999,18 @@ app.get('/api/game/validate/:token', async (req, res) => {
         
         await LaunchToken.deleteOne({ token: req.params.token });
         
+        // ВАЖНО: Возвращаем правильный хост!
+        const wsHost = process.env.RENDER_EXTERNAL_HOSTNAME || 
+                       process.env.WS_HOST || 
+                       'tublox.onrender.com';
+        
         const response = {
             success: true,
             odilId: launchData.odilId,
             username: launchData.username,
             gameId: launchData.gameId,
-            wsHost: process.env.WS_HOST || 'localhost',
-            wsPort: parseInt(process.env.PORT) || 3000
+            wsHost: wsHost,
+            wsPort: 443
         };
         
         if (game && game.buildData) {
@@ -918,6 +1046,6 @@ app.get('/download/TuBloxSetup.exe', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`WebSocket running on ws://localhost:${PORT}`);
+    console.log(`Server running on port ${PORT}`);
+    console.log(`WebSocket path: /ws`);
 });

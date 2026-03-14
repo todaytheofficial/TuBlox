@@ -2,34 +2,19 @@
 // Console
 // ============================================
 console.clear();
-console.log('%cTUBLOX', 'font-size:48px;font-weight:800;color:#fff;');
-
-// ============================================
-// PacketTypes
-// ============================================
-const PacketType = {
-    CONNECT_REQUEST: 1,
-    CONNECT_RESPONSE: 2,
-    DISCONNECT: 3,
-    PING: 4,
-    PONG: 5,
-    PLAYER_JOIN: 10,
-    PLAYER_LEAVE: 11,
-    PLAYER_STATE: 12,
-    CHAT_MESSAGE: 30,
-    HOST_ASSIGN: 50,
-    BUILD_DATA: 51
-};
+console.log('%cTUBLOX', 'font-size:52px;font-weight:800;color:#fff;');
+console.log('%c⛔ STOP!', 'font-size:24px;font-weight:bold;color:#f00;');
+console.log('%cDo not paste code here.', 'font-size:14px;color:#ff4444;');
 
 // ============================================
 // Toast
 // ============================================
 function toast(msg, type = 'success') {
     let c = document.querySelector('.toast-container');
-    if (!c) { 
-        c = document.createElement('div'); 
-        c.className = 'toast-container'; 
-        document.body.appendChild(c); 
+    if (!c) {
+        c = document.createElement('div');
+        c.className = 'toast-container';
+        document.body.appendChild(c);
     }
     const icon = type === 'success'
         ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>'
@@ -42,28 +27,11 @@ function toast(msg, type = 'success') {
 }
 
 // ============================================
-// Globals
+// Current User
 // ============================================
 let currentUser = null;
-let currentGameId = null;
-
-// Game State
-let gameWS = null;
-let gameActive = false;
-let isConnecting = false; // Флаг чтобы не подключаться дважды
-let myOdilId = 0;
-let myPlayerId = 0;
-let isHost = false;
-let remotePlayers = {};
-let myPos = { x: 0, y: 5, z: 0 };
-let myRot = { x: 0, y: 0, z: 0 };
-let myVel = { x: 0, y: 0, z: 0 };
-let buildData = null;
-
-// Intervals
-let stateInterval = null;
-let pingInterval = null;
-let keys = {};
+let currentLaunchGameId = null;
+let currentGameServers = [];
 
 // ============================================
 // Auth
@@ -84,28 +52,26 @@ async function register(e) {
     e.preventDefault();
     const btn = e.target.querySelector('button');
     const html = btn.innerHTML;
-    btn.innerHTML = '<div class="loader"></div>'; 
+    btn.innerHTML = '<div class="loader"></div>';
     btn.disabled = true;
     try {
         const res = await fetch('/api/register', {
-            method: 'POST', 
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                username: document.getElementById('reg-username').value, 
-                password: document.getElementById('reg-password').value 
+            body: JSON.stringify({
+                username: document.getElementById('reg-username').value,
+                password: document.getElementById('reg-password').value
             })
         });
         const data = await res.json();
-        if (data.success) { 
-            toast(`Account created! ID: #${data.odilId}`); 
-            setTimeout(() => location.href = '/home', 1000); 
-        } else { 
-            toast(data.message, 'error'); 
+        if (data.success) {
+            toast(`Account created! ID: #${data.odilId}`);
+            setTimeout(() => location.href = '/home', 1000);
+        } else {
+            toast(data.message, 'error');
         }
-    } catch { 
-        toast('Connection error', 'error'); 
-    }
-    btn.innerHTML = html; 
+    } catch { toast('Connection error', 'error'); }
+    btn.innerHTML = html;
     btn.disabled = false;
 }
 
@@ -113,34 +79,32 @@ async function login(e) {
     e.preventDefault();
     const btn = e.target.querySelector('button');
     const html = btn.innerHTML;
-    btn.innerHTML = '<div class="loader"></div>'; 
+    btn.innerHTML = '<div class="loader"></div>';
     btn.disabled = true;
     try {
         const res = await fetch('/api/login', {
-            method: 'POST', 
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                username: document.getElementById('login-username').value, 
-                password: document.getElementById('login-password').value 
+            body: JSON.stringify({
+                username: document.getElementById('login-username').value,
+                password: document.getElementById('login-password').value
             })
         });
         const data = await res.json();
-        if (data.success) { 
-            toast('Welcome back'); 
-            setTimeout(() => location.href = '/home', 600); 
-        } else { 
-            toast(data.message, 'error'); 
+        if (data.success) {
+            toast('Welcome back');
+            setTimeout(() => location.href = '/home', 600);
+        } else {
+            toast(data.message, 'error');
         }
-    } catch { 
-        toast('Connection error', 'error'); 
-    }
-    btn.innerHTML = html; 
+    } catch { toast('Connection error', 'error'); }
+    btn.innerHTML = html;
     btn.disabled = false;
 }
 
-async function logout() { 
-    await fetch('/api/logout', { method: 'POST' }); 
-    location.href = '/'; 
+async function logout() {
+    await fetch('/api/logout', { method: 'POST' });
+    location.href = '/';
 }
 
 // ============================================
@@ -152,38 +116,65 @@ async function loadUser() {
         const data = await res.json();
         if (data.success) {
             currentUser = data.user;
-            myOdilId = data.user.odilId;
+            
             document.querySelectorAll('.username').forEach(el => el.textContent = data.user.username);
             document.querySelectorAll('.odil-id').forEach(el => el.textContent = `#${data.user.odilId}`);
+
+            const level = document.getElementById('user-level');
+            const coins = document.getElementById('user-coins');
+            const time = document.getElementById('user-playtime');
+            if (level) level.textContent = data.user.gameData.level;
+            if (coins) coins.textContent = data.user.gameData.coins;
+            if (time) time.textContent = Math.floor(data.user.gameData.playTime / 60) + 'h';
         }
-    } catch (e) { 
-        console.error(e); 
-    }
+    } catch (e) { console.error(e); }
 }
 
 // ============================================
-// Games List
+// Games
 // ============================================
 function gameCardHTML(game, large = false) {
-    const placeholder = `<div class="placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/></svg></div>`;
+    const placeholder = `
+        <div class="placeholder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="6" width="20" height="12" rx="2"/>
+                <path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/>
+            </svg>
+        </div>
+    `;
+    
     return `
         <div class="game-card ${large ? 'large' : ''}" onclick="location.href='/game/${game.id}'">
             <div class="game-card-image">
                 ${game.thumbnail ? `<img src="${game.thumbnail}" alt="${game.title}">` : placeholder}
-                <div class="game-card-players"><span class="dot"></span><span>${game.activePlayers || 0} playing</span></div>
+                <div class="game-card-players">
+                    <span class="dot"></span>
+                    <span>${game.activePlayers || 0} playing</span>
+                </div>
             </div>
             <div class="game-card-info">
                 <div class="game-card-title">${game.title}</div>
                 <div class="game-card-creator">by ${game.creator}</div>
             </div>
-        </div>`;
+        </div>
+    `;
 }
 
 function featuredGameHTML(game) {
-    const placeholder = `<div class="placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/></svg></div>`;
+    const placeholder = `
+        <div class="placeholder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="6" width="20" height="12" rx="2"/>
+                <path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/>
+            </svg>
+        </div>
+    `;
+    
     return `
         <div class="featured-game" onclick="location.href='/game/${game.id}'">
-            <div class="featured-game-image">${game.thumbnail ? `<img src="${game.thumbnail}" alt="${game.title}">` : placeholder}</div>
+            <div class="featured-game-image">
+                ${game.thumbnail ? `<img src="${game.thumbnail}" alt="${game.title}">` : placeholder}
+            </div>
             <div class="featured-game-info">
                 <div class="featured-game-badge">Featured</div>
                 <h3 class="featured-game-title">${game.title}</h3>
@@ -193,534 +184,447 @@ function featuredGameHTML(game) {
                     <span><strong>${formatNumber(game.visits || 0)}</strong> visits</span>
                 </div>
                 <button class="btn btn-primary" onclick="event.stopPropagation(); playGame('${game.id}')">
-                    <svg viewBox="0 0 24 24" fill="currentColor" style="width:18px;height:18px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg viewBox="0 0 24 24" fill="currentColor" style="width:18px;height:18px;">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
                     Play Now
                 </button>
             </div>
-        </div>`;
+        </div>
+    `;
 }
 
 async function loadFeaturedGame() {
     const container = document.getElementById('featured-game');
     if (!container) return;
+    
     try {
         const res = await fetch('/api/games?featured=true&limit=1');
         const data = await res.json();
+        
         if (data.success && data.games.length > 0) {
             container.innerHTML = featuredGameHTML(data.games[0]);
         } else {
             container.innerHTML = '<p class="no-content">No games available</p>';
         }
-    } catch { 
-        container.innerHTML = '<p class="no-content">Error loading</p>'; 
+    } catch (e) {
+        container.innerHTML = '<p class="no-content">Error loading games</p>';
     }
 }
 
 async function loadAllGames() {
     const container = document.getElementById('all-games');
     if (!container) return;
+    
     try {
         const res = await fetch('/api/games');
         const data = await res.json();
+        
         if (data.success && data.games.length > 0) {
             container.innerHTML = data.games.map(g => gameCardHTML(g, true)).join('');
         } else {
             container.innerHTML = '<p class="no-content">No games available</p>';
         }
-    } catch { 
-        container.innerHTML = '<p class="no-content">Error loading</p>'; 
+    } catch (e) {
+        container.innerHTML = '<p class="no-content">Error loading games</p>';
     }
 }
 
 async function loadGamePage() {
     const container = document.getElementById('game-content');
     if (!container) return;
+    
     const gameId = location.pathname.split('/').pop();
+    
     try {
         const res = await fetch(`/api/game/${gameId}`);
         const data = await res.json();
+        
         if (data.success) {
             const g = data.game;
-            const placeholder = `<div class="placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/></svg></div>`;
+            const placeholder = `
+                <div class="placeholder">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <rect x="2" y="6" width="20" height="12" rx="2"/>
+                        <path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/>
+                    </svg>
+                </div>
+            `;
+            
             container.innerHTML = `
                 <div class="game-hero">
-                    <div class="game-media">${g.thumbnail ? `<img src="${g.thumbnail}" alt="${g.title}">` : placeholder}</div>
+                    <div class="game-media">
+                        ${g.thumbnail ? `<img src="${g.thumbnail}" alt="${g.title}">` : placeholder}
+                    </div>
                     <div class="game-sidebar">
                         <div class="game-main-card">
                             <h1 class="game-title">${g.title}</h1>
                             <p class="game-creator">by <a href="/user/${g.creatorId}">${g.creator}</a></p>
+                            
                             <div class="game-stats">
-                                <div class="game-stat"><div class="game-stat-value">${g.activePlayers || 0}</div><div class="game-stat-label">Playing</div></div>
-                                <div class="game-stat"><div class="game-stat-value">${formatNumber(g.visits || 0)}</div><div class="game-stat-label">Visits</div></div>
+                                <div class="game-stat">
+                                    <div class="game-stat-value">${g.activePlayers || 0}</div>
+                                    <div class="game-stat-label">Playing</div>
+                                </div>
+                                <div class="game-stat">
+                                    <div class="game-stat-value">${formatNumber(g.visits || 0)}</div>
+                                    <div class="game-stat-label">Visits</div>
+                                </div>
+                                <div class="game-stat">
+                                    <div class="game-stat-value">${g.maxPlayers || 50}</div>
+                                    <div class="game-stat-label">Max</div>
+                                </div>
                             </div>
+                            
                             <button class="btn btn-primary play-button" onclick="playGame('${g.id}')">
-                                <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <polygon points="5 3 19 12 5 21 5 3"/>
+                                </svg>
+                                Play
                             </button>
+                            
+                            <div class="game-actions">
+                                <button class="btn btn-secondary" onclick="openServersModal()">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
+                                        <rect x="2" y="3" width="20" height="14" rx="2"/>
+                                        <line x1="8" y1="21" x2="16" y2="21"/>
+                                        <line x1="12" y1="17" x2="12" y2="21"/>
+                                    </svg>
+                                    Servers
+                                </button>
+                                <button class="btn btn-secondary" onclick="shareGame('${g.id}')">
+                                    🔗 Share
+                                </button>
+                            </div>
                         </div>
-                        <div class="game-description"><h3>About</h3><p>${g.description || 'No description.'}</p></div>
+                        
+                        <div class="game-description">
+                            <h3>About</h3>
+                            <p>${g.description || 'No description provided.'}</p>
+                        </div>
                     </div>
-                </div>`;
+                </div>
+            `;
+            
             document.title = `TuBlox — ${g.title}`;
         } else {
-            container.innerHTML = `<div class="not-found"><h2>Game not found</h2></div>`;
+            container.innerHTML = `
+                <div class="not-found">
+                    <h2>Game not found</h2>
+                    <a href="/games" class="btn btn-secondary">Browse Games</a>
+                </div>
+            `;
         }
-    } catch { 
-        container.innerHTML = '<p class="error">Error loading</p>'; 
+    } catch (e) {
+        container.innerHTML = '<p class="error">Error loading game</p>';
     }
 }
 
 // ============================================
-// Play Game
+// Launch System
 // ============================================
 function setLaunchState(state) {
     document.querySelectorAll('.launch-state').forEach(el => el.classList.remove('active'));
+    
     const el = document.getElementById(`state-${state}`);
     if (el) el.classList.add('active');
+    
+    const title = document.getElementById('modal-title');
+    if (title) {
+        const titles = {
+            connecting: 'Launching Game',
+            success: 'Game Started',
+            notfound: 'Install Required',
+            error: 'Launch Failed'
+        };
+        title.textContent = titles[state] || 'Launching Game';
+    }
 }
 
 function openPlayModal() {
     const modal = document.getElementById('play-modal');
-    if (modal) { 
-        modal.classList.add('active'); 
-        setLaunchState('connecting'); 
+    if (modal) {
+        modal.classList.add('active');
+        setLaunchState('connecting');
     }
 }
 
 function closePlayModal() {
     const modal = document.getElementById('play-modal');
     if (modal) modal.classList.remove('active');
+    setTimeout(() => setLaunchState('connecting'), 300);
 }
 
-function playGame(gameId) {
-    if (!currentUser) { 
-        toast('Please log in', 'error'); 
-        return; 
-    }
-    
-    // Защита от двойного вызова
-    if (isConnecting || gameActive) {
-        console.log('[Game] Already connecting or active, ignoring');
-        return;
-    }
-    
-    currentGameId = gameId;
-    openPlayModal();
-    connectToGame(gameId);
-}
-
-function retryPlay() {
-    if (currentGameId && !isConnecting) {
+function retryLaunch() {
+    if (currentLaunchGameId) {
         setLaunchState('connecting');
-        connectToGame(currentGameId);
+        launchGame(currentLaunchGameId);
     }
 }
 
-// ============================================
-// WebSocket Connection
-// ============================================
-function connectToGame(gameId) {
-    // Защита от повторного подключения
-    if (isConnecting) {
-        console.log('[Game] Already connecting, ignoring');
-        return;
-    }
-    
-    isConnecting = true;
-    
-    // Закрываем старое соединение
-    if (gameWS) {
-        gameWS.onclose = null; // Убираем обработчик чтобы не вызвать handleDisconnect
-        gameWS.onerror = null;
-        gameWS.onmessage = null;
-        gameWS.onopen = null;
-        try { gameWS.close(); } catch {}
-        gameWS = null;
-    }
+function detectClientLaunch(launchUrl) {
+    return new Promise((resolve) => {
+        let detected = false;
+        
+        const onBlur = () => {
+            if (!detected) {
+                detected = true;
+                cleanup();
+                resolve(true);
+            }
+        };
+        
+        const onVisibility = () => {
+            if (document.hidden && !detected) {
+                detected = true;
+                cleanup();
+                resolve(true);
+            }
+        };
+        
+        function cleanup() {
+            window.removeEventListener('blur', onBlur);
+            document.removeEventListener('visibilitychange', onVisibility);
+        }
+        
+        window.addEventListener('blur', onBlur);
+        document.addEventListener('visibilitychange', onVisibility);
+        
+        // Пытаемся открыть протокол
+        window.location.href = launchUrl;
+        
+        // Если за 3.5 секунды ничего — клиент не установлен
+        setTimeout(() => {
+            if (!detected) {
+                cleanup();
+                resolve(false);
+            }
+        }, 3500);
+    });
+}
 
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${proto}//${location.host}/ws`;
-    console.log('[Game] Connecting:', url);
-
+async function launchGame(gameId) {
+    currentLaunchGameId = gameId;
+    
     try {
-        gameWS = new WebSocket(url);
-    } catch (err) {
-        console.error('[Game] WebSocket create error:', err);
-        isConnecting = false;
-        setLaunchState('error');
-        return;
-    }
-
-    const currentWS = gameWS; // Сохраняем ссылку
-
-    gameWS.onopen = () => {
-        // Проверяем что это тот же WebSocket
-        if (gameWS !== currentWS) {
-            console.log('[Game] Stale WebSocket onopen, ignoring');
+        const res = await fetch('/api/game/launch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gameId })
+        });
+        const data = await res.json();
+        
+        if (!data.success) {
+            setLaunchState('error');
+            const errMsg = document.getElementById('error-message');
+            if (errMsg) errMsg.textContent = data.message || 'Failed to create launch session';
             return;
         }
         
-        console.log('[Game] WebSocket connected, joining game...');
+        // Формируем данные для клиента (WebSocket connection)
+        const launchData = {
+            username: currentUser.username,
+            odilId: currentUser.odilId,
+            host: data.wsHost || window.location.hostname || 'localhost',
+            port: data.wsPort || 3000,
+            gameId: gameId,
+            token: data.token
+        };
         
-        if (gameWS && gameWS.readyState === WebSocket.OPEN) {
-            gameWS.send(JSON.stringify({ 
-                type: PacketType.CONNECT_REQUEST,
-                odilId: myOdilId,
-                username: currentUser.username,
-                gameId: gameId
-            }));
+        const jsonStr = JSON.stringify(launchData);
+        const base64 = btoa(unescape(encodeURIComponent(jsonStr)))
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=/g, '');
+        const launchUrl = 'tublox://play/' + base64;
+        
+        console.log('[Launch] URL:', launchUrl);
+        console.log('[Launch] Data:', launchData);
+        
+        // Пытаемся открыть клиент
+        const clientFound = await detectClientLaunch(launchUrl);
+        
+        if (clientFound) {
+            setLaunchState('success');
+            setTimeout(() => {
+                closePlayModal();
+                toast('Game launched! 🎮');
+            }, 3000);
+        } else {
+            // Клиент не найден — предлагаем скачать
+            setLaunchState('notfound');
         }
-    };
-
-    gameWS.onmessage = (e) => {
-        if (gameWS !== currentWS) return;
         
-        try {
-            const data = JSON.parse(e.data);
-            handleGameMessage(data);
-        } catch (err) {
-            console.error('[Game] Parse error:', err);
-        }
-    };
-
-    gameWS.onclose = (e) => {
-        if (gameWS !== currentWS) return;
-        
-        console.log('[Game] WebSocket closed, code:', e.code);
-        isConnecting = false;
-        
-        if (gameActive) {
-            handleDisconnect('Connection lost');
-        }
-    };
-
-    gameWS.onerror = (e) => {
-        if (gameWS !== currentWS) return;
-        
-        console.error('[Game] WebSocket error');
-        isConnecting = false;
+    } catch (e) {
+        console.error('Launch error:', e);
         setLaunchState('error');
         const errMsg = document.getElementById('error-message');
-        if (errMsg) errMsg.textContent = 'Connection failed';
-    };
-}
-
-function handleGameMessage(data) {
-    switch (data.type) {
-        case PacketType.CONNECT_RESPONSE:
-            isConnecting = false;
-            
-            if (data.success) {
-                myPlayerId = data.odilId;
-                myOdilId = data.odilId;
-                isHost = data.isHost;
-                myPos = { 
-                    x: data.spawnX || 0, 
-                    y: data.spawnY || 5, 
-                    z: data.spawnZ || 0 
-                };
-                
-                console.log('[Game] Joined!', { odilId: myOdilId, isHost });
-                setLaunchState('success');
-                setTimeout(() => enterGame(), 300);
-            } else {
-                setLaunchState('error');
-                const errMsg = document.getElementById('error-message');
-                if (errMsg) errMsg.textContent = data.message || 'Failed to join';
-            }
-            break;
-
-        case PacketType.PLAYER_JOIN:
-            console.log('[Game] Player joined:', data.username);
-            remotePlayers[data.odilId] = {
-                odilId: data.odilId,
-                username: data.username,
-                position: { x: data.posX || 0, y: data.posY || 0, z: data.posZ || 0 },
-                rotation: { x: 0, y: 0, z: 0 },
-                velocity: { x: 0, y: 0, z: 0 },
-                animationId: 0
-            };
-            addChat(null, `${data.username} joined`, true);
-            updateHUD();
-            break;
-
-        case PacketType.PLAYER_LEAVE:
-            if (remotePlayers[data.odilId]) {
-                addChat(null, `${remotePlayers[data.odilId].username} left`, true);
-                delete remotePlayers[data.odilId];
-                updateHUD();
-            }
-            break;
-
-        case PacketType.PLAYER_STATE:
-            if (data.odilId !== myOdilId && remotePlayers[data.odilId]) {
-                const p = remotePlayers[data.odilId];
-                p.position = { x: data.posX, y: data.posY, z: data.posZ };
-                p.rotation = { x: data.rotX || 0, y: data.rotY || 0, z: data.rotZ || 0 };
-                p.velocity = { x: data.velX || 0, y: data.velY || 0, z: data.velZ || 0 };
-                p.animationId = data.animationId ?? p.animationId;
-                renderPlayers();
-            }
-            break;
-
-        case PacketType.CHAT_MESSAGE:
-            addChat(data.username, data.message, false);
-            break;
-
-        case PacketType.PONG:
-            const ping = Date.now() - (data.clientTime || 0);
-            const pingEl = document.getElementById('hud-ping');
-            if (pingEl) pingEl.textContent = `${ping}ms`;
-            break;
-
-        case PacketType.HOST_ASSIGN:
-            isHost = data.isHost;
-            console.log('[Game] Host status:', isHost);
-            const hudHost = document.getElementById('hud-host');
-            if (hudHost) hudHost.textContent = isHost ? '(Host)' : '';
-            updateHUD();
-            break;
-
-        case PacketType.BUILD_DATA:
-            buildData = data.buildData;
-            console.log('[Game] Received build data');
-            break;
+        if (errMsg) errMsg.textContent = 'Connection error. Please try again.';
     }
 }
 
-// ============================================
-// Enter Game
-// ============================================
-function enterGame() {
-    // Защита от повторного входа
-    if (gameActive) {
-        console.log('[Game] Already in game, ignoring');
+function playGame(gameId) {
+    if (!currentUser) {
+        toast('Please log in to play', 'error');
         return;
     }
     
-    console.log('[Game] Entering game');
-    gameActive = true;
-    closePlayModal();
-
-    const navbar = document.getElementById('main-navbar');
-    const gamePage = document.getElementById('game-page');
-    const hud = document.getElementById('game-hud');
-    
-    if (navbar) navbar.style.display = 'none';
-    if (gamePage) gamePage.style.display = 'none';
-    if (hud) hud.classList.add('active');
-
-    const hudTitle = document.getElementById('hud-title');
-    const hudName = document.getElementById('hud-name');
-    const hudHost = document.getElementById('hud-host');
-    
-    if (hudTitle) hudTitle.textContent = currentGameId || 'Game';
-    if (hudName) hudName.textContent = currentUser.username;
-    if (hudHost) hudHost.textContent = isHost ? '(Host)' : '';
-
-    addChat(null, 'Welcome to TuBlox!', true);
-    addChat(null, `You are ${currentUser.username}` + (isHost ? ' (Host)' : ''), true);
-
-    updateHUD();
-    startGameLoop();
-    toast('Connected! 🎮');
+    openPlayModal();
+    launchGame(gameId);
 }
 
-function startGameLoop() {
-    if (stateInterval) clearInterval(stateInterval);
-    if (pingInterval) clearInterval(pingInterval);
+function shareGame(gameId) {
+    navigator.clipboard.writeText(`${location.origin}/game/${gameId}`);
+    toast('Link copied!');
+}
 
-    // Send state 20 times/sec
-    stateInterval = setInterval(() => {
-        if (!gameWS || gameWS.readyState !== WebSocket.OPEN || !gameActive) return;
-        
-        gameWS.send(JSON.stringify({
-            type: PacketType.PLAYER_STATE,
-            posX: myPos.x,
-            posY: myPos.y,
-            posZ: myPos.z,
-            rotX: myRot.x,
-            rotY: myRot.y,
-            rotZ: myRot.z,
-            velX: myVel.x,
-            velY: myVel.y,
-            velZ: myVel.z,
-            isGrounded: true,
-            isJumping: false,
-            isSprinting: !!keys['shift'],
-            isInWater: false,
-            animationId: isMoving() ? 1 : 0
-        }));
+// ============================================
+// Servers Modal
+// ============================================
+function openServersModal() {
+    const modal = document.getElementById('servers-modal');
+    if (modal) {
+        modal.classList.add('active');
+        loadGameServers();
+    }
+}
 
-        const coordsEl = document.getElementById('hud-coords');
-        if (coordsEl) {
-            coordsEl.textContent = `${myPos.x.toFixed(1)}, ${myPos.y.toFixed(1)}, ${myPos.z.toFixed(1)}`;
+function closeServersModal() {
+    const modal = document.getElementById('servers-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+async function loadGameServers() {
+    const body = document.getElementById('servers-body');
+    if (!body) return;
+
+    const gameId = location.pathname.split('/').pop();
+
+    body.innerHTML = `
+        <div class="servers-loading">
+            <div class="spinner"></div>
+            <p>Loading servers...</p>
+        </div>
+    `;
+
+    try {
+        const res = await fetch(`/api/game/${gameId}/servers`);
+        const data = await res.json();
+
+        if (!data.success) {
+            throw new Error(data.message);
         }
-    }, 50);
 
-    // Ping every 2 sec
-    pingInterval = setInterval(() => {
-        if (gameWS && gameWS.readyState === WebSocket.OPEN) {
-            gameWS.send(JSON.stringify({ 
-                type: PacketType.PING, 
-                clientTime: Date.now() 
-            }));
+        currentGameServers = data.servers || [];
+
+        if (currentGameServers.length === 0) {
+            body.innerHTML = `
+                <div class="servers-empty">
+                    <div class="servers-empty-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="2" y="3" width="20" height="14" rx="2"/>
+                            <line x1="8" y1="21" x2="16" y2="21"/>
+                            <line x1="12" y1="17" x2="12" y2="21"/>
+                        </svg>
+                    </div>
+                    <h4>No Active Servers</h4>
+                    <p>Be the first to play! Click Play to start a new server.</p>
+                    <button class="btn btn-primary" onclick="closeServersModal(); playGame('${gameId}')">
+                        <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                        </svg>
+                        Start Playing
+                    </button>
+                </div>
+            `;
+            return;
         }
-    }, 2000);
-}
 
-function isMoving() {
-    return keys['w'] || keys['a'] || keys['s'] || keys['d'] ||
-           keys['arrowup'] || keys['arrowdown'] || keys['arrowleft'] || keys['arrowright'];
-}
+        let html = `
+            <div class="servers-refresh">
+                <span class="servers-count">${currentGameServers.length} server${currentGameServers.length !== 1 ? 's' : ''} found</span>
+                <button class="btn btn-secondary btn-refresh" onclick="loadGameServers()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 4v6h-6"/>
+                        <path d="M1 20v-6h6"/>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/>
+                        <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/>
+                    </svg>
+                    Refresh
+                </button>
+            </div>
+            <div class="servers-list">
+        `;
 
-// ============================================
-// Disconnect
-// ============================================
-function disconnectGame() {
-    if (gameWS && gameWS.readyState === WebSocket.OPEN) {
-        gameWS.send(JSON.stringify({ type: PacketType.DISCONNECT }));
-        gameWS.close();
-    }
-    handleDisconnect('Disconnected');
-}
-
-function handleDisconnect(reason) {
-    gameActive = false;
-    isConnecting = false;
-    
-    if (stateInterval) { clearInterval(stateInterval); stateInterval = null; }
-    if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
-    
-    remotePlayers = {};
-    gameWS = null;
-    isHost = false;
-
-    const hud = document.getElementById('game-hud');
-    const navbar = document.getElementById('main-navbar');
-    const gamePage = document.getElementById('game-page');
-    
-    if (hud) hud.classList.remove('active');
-    if (navbar) navbar.style.display = '';
-    if (gamePage) gamePage.style.display = '';
-
-    toast(reason, 'error');
-}
-
-// ============================================
-// HUD
-// ============================================
-function updateHUD() {
-    const entries = document.getElementById('hud-player-entries');
-    if (entries) {
-        let html = `<div class="hud-player-entry self">${currentUser?.username || 'You'} (you)${isHost ? ' 👑' : ''}</div>`;
-        for (const p of Object.values(remotePlayers)) {
-            html += `<div class="hud-player-entry">${p.username}</div>`;
+        for (const server of currentGameServers) {
+            html += `
+                <div class="server-item" onclick="joinServer('${server.id}')">
+                    <div class="server-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="2" y="3" width="20" height="14" rx="2"/>
+                            <line x1="8" y1="21" x2="16" y2="21"/>
+                            <line x1="12" y1="17" x2="12" y2="21"/>
+                        </svg>
+                    </div>
+                    <div class="server-info">
+                        <div class="server-name">${escapeHtml(server.name)}</div>
+                        <div class="server-meta">
+                            <span class="server-players">
+                                <span class="dot"></span>
+                                ${server.players}/${server.maxPlayers} players
+                            </span>
+                            ${server.ping ? `<span class="server-ping">${server.ping}ms</span>` : ''}
+                        </div>
+                    </div>
+                    <button class="btn btn-primary server-join-btn">Join</button>
+                </div>
+            `;
         }
-        entries.innerHTML = html;
+
+        html += '</div>';
+        body.innerHTML = html;
+
+    } catch (err) {
+        console.error('Load servers error:', err);
+        body.innerHTML = `
+            <div class="servers-empty">
+                <div class="servers-empty-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                </div>
+                <h4>Failed to Load</h4>
+                <p>Could not load server list. Please try again.</p>
+                <button class="btn btn-secondary" onclick="loadGameServers()">Retry</button>
+            </div>
+        `;
     }
-    
-    const count = 1 + Object.keys(remotePlayers).length;
-    const countEl = document.getElementById('hud-count');
-    if (countEl) countEl.textContent = `${count} player${count !== 1 ? 's' : ''}`;
-    
-    renderPlayers();
 }
 
-function renderPlayers() {
-    const vp = document.getElementById('hud-viewport');
-    if (!vp) return;
-    vp.querySelectorAll('.viewport-dot').forEach(d => d.remove());
-
-    const w = vp.clientWidth, h = vp.clientHeight;
-    const cx = w / 2, cy = h / 2, scale = 8;
-
-    createDot(vp, currentUser?.username, myPos, false, cx, cy, scale, w, h);
-    for (const p of Object.values(remotePlayers)) {
-        createDot(vp, p.username, p.position, true, cx, cy, scale, w, h);
-    }
+function joinServer(serverId) {
+    closeServersModal();
+    playGame(serverId);
 }
 
-function createDot(vp, name, pos, remote, cx, cy, scale, w, h) {
-    const dot = document.createElement('div');
-    dot.className = 'viewport-dot ' + (remote ? 'remote' : 'self');
-    const sx = cx + (pos.x || 0) * scale;
-    const sy = cy - (pos.z || 0) * scale;
-    dot.style.left = Math.max(10, Math.min(w - 10, sx)) + 'px';
-    dot.style.top = Math.max(30, Math.min(h - 30, sy)) + 'px';
-    const label = document.createElement('div');
-    label.className = 'dot-label';
-    label.textContent = name || '?';
-    dot.appendChild(label);
-    vp.appendChild(dot);
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // ============================================
-// Chat
-// ============================================
-function addChat(sender, message, system) {
-    const c = document.getElementById('hud-chat-messages');
-    if (!c) return;
-    const el = document.createElement('div');
-    el.className = 'hud-chat-msg' + (system ? ' system' : '');
-    if (system) {
-        el.textContent = `* ${message}`;
-    } else {
-        el.innerHTML = `<span class="name">${escapeHtml(sender)}:</span> ${escapeHtml(message)}`;
-    }
-    c.appendChild(el);
-    c.scrollTop = c.scrollHeight;
-    while (c.children.length > 100) c.removeChild(c.firstChild);
-}
-
-function sendChat() {
-    const input = document.getElementById('hud-chat-input');
-    if (!input) return;
-    
-    const msg = input.value.trim();
-    if (!msg || !gameWS || gameWS.readyState !== WebSocket.OPEN) return;
-    
-    gameWS.send(JSON.stringify({ 
-        type: PacketType.CHAT_MESSAGE, 
-        message: msg 
-    }));
-    input.value = '';
-}
-
-// ============================================
-// Input
-// ============================================
-document.addEventListener('keydown', (e) => {
-    if (document.activeElement?.id === 'hud-chat-input') {
-        if (e.key === 'Enter') sendChat();
-        return;
-    }
-    keys[e.key.toLowerCase()] = true;
-});
-
-document.addEventListener('keyup', (e) => {
-    keys[e.key.toLowerCase()] = false;
-});
-
-// Movement
-setInterval(() => {
-    if (!gameActive) return;
-    const speed = keys['shift'] ? 0.5 : 0.25;
-    if (keys['w'] || keys['arrowup']) myPos.z -= speed;
-    if (keys['s'] || keys['arrowdown']) myPos.z += speed;
-    if (keys['a'] || keys['arrowleft']) myPos.x -= speed;
-    if (keys['d'] || keys['arrowright']) myPos.x += speed;
-    renderPlayers();
-}, 50);
-
-// ============================================
-// Users & Profile
+// Users
 // ============================================
 async function loadUsers() {
     const grid = document.getElementById('users-grid');
     if (!grid) return;
+    
     try {
         const res = await fetch('/api/users');
         const data = await res.json();
+        
         if (data.success && data.users.length > 0) {
             grid.innerHTML = data.users.map(u => `
                 <div class="user-card" onclick="location.href='/user/${u.odilId}'">
@@ -730,22 +634,29 @@ async function loadUsers() {
                         <div class="user-id">#${u.odilId}</div>
                     </div>
                     <div class="user-level">Lv.${u.gameData.level}</div>
-                </div>`).join('');
+                </div>
+            `).join('');
         } else {
-            grid.innerHTML = '<p class="no-content">No players</p>';
+            grid.innerHTML = '<p class="no-content">No players yet</p>';
         }
-    } catch { 
-        grid.innerHTML = '<p class="no-content">Error</p>'; 
+    } catch (e) {
+        grid.innerHTML = '<p class="no-content">Error loading</p>';
     }
 }
 
+// ============================================
+// Profile
+// ============================================
 async function loadProfile() {
     const content = document.getElementById('profile-content');
     if (!content) return;
+    
     const id = location.pathname.split('/').pop();
+    
     try {
         const res = await fetch(`/api/user/${id}`);
         const data = await res.json();
+        
         if (data.success) {
             const u = data.user;
             content.innerHTML = `
@@ -767,12 +678,13 @@ async function loadProfile() {
                         <div class="profile-stat-value">${Math.floor(u.gameData.playTime / 60)}h</div>
                         <div class="profile-stat-label">Play Time</div>
                     </div>
-                </div>`;
+                </div>
+            `;
         } else {
-            content.innerHTML = '<div class="not-found"><h2>Not found</h2></div>';
+            content.innerHTML = '<div class="not-found"><h2>User not found</h2></div>';
         }
-    } catch { 
-        content.innerHTML = '<p class="error">Error</p>'; 
+    } catch (e) {
+        content.innerHTML = '<p class="error">Error</p>';
     }
 }
 
@@ -782,67 +694,60 @@ async function loadProfile() {
 function formatNumber(n) {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
     if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-    return String(n);
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text || '';
-    return div.innerHTML;
+    return n.toString();
 }
 
 // ============================================
 // Init
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
-    // Auth page
+    // Auth
     if (document.querySelector('.auth-tabs')) {
         initTabs();
         document.getElementById('register-form')?.addEventListener('submit', register);
         document.getElementById('login-form')?.addEventListener('submit', login);
     }
     
-    // Home page
-    if (document.querySelector('.home-page')) { 
-        loadUser(); 
-        loadFeaturedGame(); 
-        document.getElementById('logout-btn')?.addEventListener('click', logout); 
+    // Home
+    if (document.querySelector('.home-page')) {
+        loadUser();
+        loadFeaturedGame();
+        document.getElementById('logout-btn')?.addEventListener('click', logout);
     }
     
-    // Games page
-    if (document.querySelector('.games-page')) { 
-        loadUser(); 
-        loadAllGames(); 
-        document.getElementById('logout-btn')?.addEventListener('click', logout); 
+    // Games
+    if (document.querySelector('.games-page')) {
+        loadUser();
+        loadAllGames();
+        document.getElementById('logout-btn')?.addEventListener('click', logout);
     }
     
-    // Game page
-    if (document.querySelector('.game-page')) { 
-        loadUser(); 
-        loadGamePage(); 
-        document.getElementById('logout-btn')?.addEventListener('click', logout); 
+    // Game
+    if (document.querySelector('.game-page')) {
+        loadUser();
+        loadGamePage();
+        document.getElementById('logout-btn')?.addEventListener('click', logout);
     }
     
-    // Users page
-    if (document.querySelector('.users-page')) { 
-        loadUser(); 
-        loadUsers(); 
+    // Users
+    if (document.querySelector('.users-page')) {
+        loadUser();
+        loadUsers();
+        document.getElementById('logout-btn')?.addEventListener('click', logout);
     }
     
-    // Profile page
-    if (document.querySelector('.profile-page')) { 
-        loadUser(); 
-        loadProfile(); 
+    // Profile
+    if (document.querySelector('.profile-page')) {
+        loadUser();
+        loadProfile();
+        document.getElementById('logout-btn')?.addEventListener('click', logout);
     }
     
-    // Modal close
+    // Modal backdrop close
     document.querySelectorAll('.modal-backdrop').forEach(el => {
-        el.onclick = () => el.closest('.modal')?.classList.remove('active');
+        el.onclick = () => {
+            const modal = el.closest('.modal');
+            if (modal) modal.classList.remove('active');
+        };
     });
-    
-    // Disconnect button
-    const disconnectBtn = document.getElementById('hud-disconnect');
-    if (disconnectBtn) {
-        disconnectBtn.addEventListener('click', disconnectGame);
-    }
 });

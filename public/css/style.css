@@ -1655,3 +1655,103 @@ a {
         width: 100%;
     }
 }
+
+/* ============================================
+   PAGINATION
+   ============================================ */
+
+.games-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    margin-top: 32px;
+    padding: 20px 0;
+}
+
+.pagination-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    height: 40px;
+    padding: 0 12px;
+    font-family: 'General Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--gray);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    color: var(--white);
+    border-color: var(--border-light);
+    transform: translateY(-1px);
+}
+
+.pagination-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.pagination-btn.active {
+    color: var(--bg);
+    background: var(--white);
+    border-color: var(--white);
+}
+
+.pagination-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.pagination-info {
+    font-size: 13px;
+    color: var(--gray);
+    margin: 0 12px;
+}
+
+/* Games grid adjustments */
+.games-page .page-header {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 48px 24px 0;
+}
+
+.games-page .games-grid {
+    padding: 0;
+}
+
+/* Empty state */
+.games-empty {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--gray);
+}
+
+.games-empty svg {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.games-empty h3 {
+    font-size: 18px;
+    color: var(--white);
+    margin-bottom: 8px;
+}
+
+.games-empty p {
+    font-size: 14px;
+}

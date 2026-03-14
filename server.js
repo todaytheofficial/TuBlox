@@ -1,4 +1,4 @@
-// server.js - ИСПРАВЛЕННАЯ ВЕРСИЯ С ЧАТОМ
+// server.js - TuBlox с пагинацией (3 игры на страницу)
 
 require('dotenv').config();
 const express = require('express');
@@ -227,7 +227,7 @@ wss.on('connection', (ws, req) => {
                     }
 
                     clientOdilId = data.odilId;
-                    clientGameId = data.gameId || 'tublox-world';
+                    clientGameId = data.gameId || 'baseplate';
                     clientUsername = (data.username || `Player${clientOdilId}`).substring(0, 32);
 
                     console.log(`[WS] Connect: ${clientUsername} (#${clientOdilId}) -> ${clientGameId}`);
@@ -313,8 +313,6 @@ wss.on('connection', (ws, req) => {
                         if (ws.readyState !== WebSocket.OPEN) return;
                         
                         for (const player of existingPlayers) {
-                            console.log(`[WS] Sending existing player ${player.username} to ${clientUsername}`);
-                            
                             sendToClient(ws, {
                                 type: PacketType.PLAYER_JOIN,
                                 odilId: player.odilId,
@@ -326,7 +324,7 @@ wss.on('connection', (ws, req) => {
                         }
                         
                         setTimeout(() => {
-                            const sentCount = broadcastToGame(clientGameId, {
+                            broadcastToGame(clientGameId, {
                                 type: PacketType.PLAYER_JOIN,
                                 odilId: clientOdilId,
                                 username: clientUsername,
@@ -334,8 +332,6 @@ wss.on('connection', (ws, req) => {
                                 posY: spawnPosition.y,
                                 posZ: spawnPosition.z
                             }, clientOdilId);
-                            
-                            console.log(`[WS] Notified ${sentCount} players about ${clientUsername}`);
                         }, 100);
                         
                     }, 200);
@@ -390,35 +386,23 @@ wss.on('connection', (ws, req) => {
                     break;
                 }
 
-                // ═══════════════════════════════════════════════════════════
-                // CHAT MESSAGE - ИСПРАВЛЕНО
-                // ═══════════════════════════════════════════════════════════
                 case PacketType.CHAT_MESSAGE: {
-                    if (!clientGameId || !clientOdilId || !isConnected) {
-                        console.log('[Chat] Rejected - not connected');
-                        break;
-                    }
+                    if (!clientGameId || !clientOdilId || !isConnected) break;
 
                     const message = (data.message || '').trim();
-                    if (!message || message.length === 0) {
-                        console.log('[Chat] Rejected - empty message');
-                        break;
-                    }
+                    if (!message || message.length === 0) break;
 
                     const safeMessage = message.substring(0, 256);
                     const safeUsername = clientUsername || `Player${clientOdilId}`;
                     
-                    console.log(`[Chat] ${safeUsername} (#${clientOdilId}): ${safeMessage}`);
+                    console.log(`[Chat] ${safeUsername}: ${safeMessage}`);
 
-                    // Отправляем ВСЕМ ДРУГИМ игрокам (исключая отправителя)
-                    const sentCount = broadcastToGame(clientGameId, {
+                    broadcastToGame(clientGameId, {
                         type: PacketType.CHAT_MESSAGE,
                         odilId: clientOdilId,
                         username: safeUsername,
                         message: safeMessage
-                    }, clientOdilId);  // <-- excludeOdilId = clientOdilId
-
-                    console.log(`[Chat] Sent to ${sentCount} other players`);
+                    }, clientOdilId);
                     break;
                 }
 
@@ -432,15 +416,10 @@ wss.on('connection', (ws, req) => {
                 }
 
                 case PacketType.DISCONNECT: {
-                    console.log(`[WS] Disconnect request from ${clientUsername}`);
                     isConnected = false;
                     ws.close(1000, 'Client disconnect');
                     break;
                 }
-
-                default:
-                    // Игнорируем неизвестные пакеты
-                    break;
             }
         } catch (err) {
             console.error('[WS] Handle message error:', err);
@@ -478,11 +457,9 @@ wss.on('connection', (ws, req) => {
     });
 });
 
-// Пинг клиентов
 const pingInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) {
-            console.log('[WS] Terminating dead connection');
             return ws.terminate();
         }
         ws.isAlive = false;
@@ -494,7 +471,6 @@ wss.on('close', () => {
     clearInterval(pingInterval);
 });
 
-// Таймауты
 setInterval(() => {
     const now = Date.now();
     
@@ -503,7 +479,6 @@ setInterval(() => {
         
         game.players.forEach((player, odilId) => {
             if (now - player.lastUpdate > 60000) {
-                console.log(`[WS] Timeout: ${player.username} in ${gameId}`);
                 toRemove.push(odilId);
             }
         });
@@ -577,6 +552,7 @@ const gameSchema = new mongoose.Schema({
     creatorId: { type: Number },
     thumbnail: { type: String, default: '' },
     featured: { type: Boolean, default: false },
+    category: { type: String, default: 'other' },
     visits: { type: Number, default: 0 },
     activePlayers: { type: Number, default: 0 },
     maxPlayers: { type: Number, default: 50 },
@@ -598,64 +574,282 @@ const launchTokenSchema = new mongoose.Schema({
 const LaunchToken = mongoose.model('LaunchToken', launchTokenSchema);
 
 // ═══════════════════════════════════════════════════════════════
-// DEFAULT WORLD DATA
+// GAME BUILD DATA
 // ═══════════════════════════════════════════════════════════════
 
-const defaultWorldBuildData = {
+// Baseplate - простая платформа
+const baseplateBuildData = {
     objects: [
         {
-            type: 'grass_cube',
-            position: { x: 0, y: -1, z: 0 },
-            scale: { x: 120, y: 2, z: 120 },
+            type: 'cube',
+            position: { x: 0, y: -0.5, z: 0 },
+            scale: { x: 100, y: 1, z: 100 },
+            color: { r: 0.3, g: 0.8, b: 0.3 },
+            isStatic: true
+        },
+        {
+            type: 'spawn',
+            position: { x: 0, y: 2, z: 0 }
+        }
+    ],
+    settings: {
+        gravity: -20,
+        skyColor: { r: 0.53, g: 0.81, b: 0.92 },
+        ambientColor: { r: 0.4, g: 0.4, b: 0.5 },
+        fogEnabled: false,
+        spawnPoint: { x: 0, y: 2, z: 0 }
+    },
+    version: 1
+};
+
+// Obby - полоса препятствий
+const obbyBuildData = {
+    objects: [
+        // Стартовая платформа
+        {
+            type: 'cube',
+            position: { x: 0, y: 0, z: 0 },
+            scale: { x: 8, y: 1, z: 8 },
+            color: { r: 0.2, g: 0.6, b: 0.2 },
             isStatic: true
         },
         {
             type: 'spawn',
             position: { x: 0, y: 2, z: 0 }
         },
+        // Платформа 1
         {
             type: 'cube',
-            position: { x: 0, y: 0, z: 0 },
-            scale: { x: 10, y: 0.3, z: 10 },
-            color: { r: 0.85, g: 0.85, b: 0.85 },
+            position: { x: 0, y: 0, z: 12 },
+            scale: { x: 4, y: 1, z: 4 },
+            color: { r: 0.9, g: 0.3, b: 0.3 },
             isStatic: true
         },
+        // Платформа 2 (выше)
         {
             type: 'cube',
-            position: { x: 5, y: 1, z: 0 },
-            scale: { x: 3, y: 2, z: 3 },
-            color: { r: 0.3, g: 0.7, b: 0.3 },
+            position: { x: 0, y: 2, z: 20 },
+            scale: { x: 4, y: 1, z: 4 },
+            color: { r: 0.9, g: 0.6, b: 0.2 },
             isStatic: true
         },
+        // Платформа 3
         {
             type: 'cube',
-            position: { x: -5, y: 1.5, z: 5 },
-            scale: { x: 4, y: 3, z: 4 },
-            color: { r: 0.7, g: 0.3, b: 0.3 },
+            position: { x: 6, y: 4, z: 20 },
+            scale: { x: 3, y: 1, z: 3 },
+            color: { r: 0.9, g: 0.9, b: 0.2 },
             isStatic: true
         },
+        // Платформа 4
         {
             type: 'cube',
-            position: { x: 10, y: 0.2, z: 0 },
-            scale: { x: 3, y: 0.3, z: 3 },
-            color: { r: 1.0, g: 0.3, b: 0.5 },
+            position: { x: 12, y: 6, z: 20 },
+            scale: { x: 3, y: 1, z: 3 },
+            color: { r: 0.2, g: 0.9, b: 0.2 },
+            isStatic: true
+        },
+        // Платформа 5
+        {
+            type: 'cube',
+            position: { x: 12, y: 8, z: 12 },
+            scale: { x: 3, y: 1, z: 3 },
+            color: { r: 0.2, g: 0.7, b: 0.9 },
+            isStatic: true
+        },
+        // Платформа 6
+        {
+            type: 'cube',
+            position: { x: 12, y: 10, z: 4 },
+            scale: { x: 3, y: 1, z: 3 },
+            color: { r: 0.5, g: 0.2, b: 0.9 },
+            isStatic: true
+        },
+        // Финишная платформа
+        {
+            type: 'cube',
+            position: { x: 12, y: 12, z: -4 },
+            scale: { x: 6, y: 1, z: 6 },
+            color: { r: 1.0, g: 0.84, b: 0.0 },
+            isStatic: true
+        },
+        // Трамплин
+        {
+            type: 'cube',
+            position: { x: 6, y: 0.2, z: 6 },
+            scale: { x: 3, y: 0.4, z: 3 },
+            color: { r: 1.0, g: 0.4, b: 0.7 },
             isStatic: true,
-            bounciness: 2.0
-        },
-        {
-            type: 'cube',
-            position: { x: 10, y: 0.2, z: 5 },
-            scale: { x: 3, y: 0.3, z: 3 },
-            color: { r: 0.3, g: 1.0, b: 0.5 },
-            isStatic: true,
-            bounciness: 3.0
+            bounciness: 2.5
         }
     ],
     settings: {
-        gravity: -9.81,
-        skyColor: { r: 0.45, g: 0.65, b: 0.95 },
+        gravity: -25,
+        skyColor: { r: 0.4, g: 0.6, b: 0.9 },
+        ambientColor: { r: 0.5, g: 0.5, b: 0.6 },
         fogEnabled: false,
         spawnPoint: { x: 0, y: 2, z: 0 }
+    },
+    version: 1
+};
+
+// Hotel - красивое закрытое помещение
+const hotelBuildData = {
+    objects: [
+        // Пол холла
+        {
+            type: 'cube',
+            position: { x: 0, y: 0, z: 0 },
+            scale: { x: 30, y: 0.5, z: 40 },
+            color: { r: 0.15, g: 0.1, b: 0.08 },
+            isStatic: true
+        },
+        // Ковёр в центре
+        {
+            type: 'cube',
+            position: { x: 0, y: 0.26, z: 0 },
+            scale: { x: 12, y: 0.02, z: 20 },
+            color: { r: 0.6, g: 0.1, b: 0.15 },
+            isStatic: true
+        },
+        // Потолок
+        {
+            type: 'cube',
+            position: { x: 0, y: 10, z: 0 },
+            scale: { x: 30, y: 0.5, z: 40 },
+            color: { r: 0.95, g: 0.93, b: 0.88 },
+            isStatic: true
+        },
+        // Стена левая
+        {
+            type: 'cube',
+            position: { x: -15, y: 5, z: 0 },
+            scale: { x: 0.5, y: 10, z: 40 },
+            color: { r: 0.85, g: 0.8, b: 0.7 },
+            isStatic: true
+        },
+        // Стена правая
+        {
+            type: 'cube',
+            position: { x: 15, y: 5, z: 0 },
+            scale: { x: 0.5, y: 10, z: 40 },
+            color: { r: 0.85, g: 0.8, b: 0.7 },
+            isStatic: true
+        },
+        // Стена задняя
+        {
+            type: 'cube',
+            position: { x: 0, y: 5, z: -20 },
+            scale: { x: 30, y: 10, z: 0.5 },
+            color: { r: 0.85, g: 0.8, b: 0.7 },
+            isStatic: true
+        },
+        // Стена передняя (с проёмом для входа)
+        {
+            type: 'cube',
+            position: { x: -10, y: 5, z: 20 },
+            scale: { x: 10, y: 10, z: 0.5 },
+            color: { r: 0.85, g: 0.8, b: 0.7 },
+            isStatic: true
+        },
+        {
+            type: 'cube',
+            position: { x: 10, y: 5, z: 20 },
+            scale: { x: 10, y: 10, z: 0.5 },
+            color: { r: 0.85, g: 0.8, b: 0.7 },
+            isStatic: true
+        },
+        {
+            type: 'cube',
+            position: { x: 0, y: 8.5, z: 20 },
+            scale: { x: 10, y: 3, z: 0.5 },
+            color: { r: 0.85, g: 0.8, b: 0.7 },
+            isStatic: true
+        },
+        // Стойка ресепшн
+        {
+            type: 'cube',
+            position: { x: 0, y: 1.5, z: -15 },
+            scale: { x: 10, y: 3, z: 2 },
+            color: { r: 0.3, g: 0.2, b: 0.15 },
+            isStatic: true
+        },
+        // Диван 1
+        {
+            type: 'cube',
+            position: { x: -10, y: 0.8, z: 5 },
+            scale: { x: 5, y: 1.6, z: 2 },
+            color: { r: 0.2, g: 0.15, b: 0.4 },
+            isStatic: true
+        },
+        // Диван 2
+        {
+            type: 'cube',
+            position: { x: 10, y: 0.8, z: 5 },
+            scale: { x: 5, y: 1.6, z: 2 },
+            color: { r: 0.2, g: 0.15, b: 0.4 },
+            isStatic: true
+        },
+        // Столик
+        {
+            type: 'cube',
+            position: { x: 0, y: 0.6, z: 5 },
+            scale: { x: 3, y: 1.2, z: 2 },
+            color: { r: 0.4, g: 0.25, b: 0.15 },
+            isStatic: true
+        },
+        // Колонна 1
+        {
+            type: 'cube',
+            position: { x: -10, y: 5, z: -8 },
+            scale: { x: 1.5, y: 10, z: 1.5 },
+            color: { r: 0.9, g: 0.85, b: 0.75 },
+            isStatic: true
+        },
+        // Колонна 2
+        {
+            type: 'cube',
+            position: { x: 10, y: 5, z: -8 },
+            scale: { x: 1.5, y: 10, z: 1.5 },
+            color: { r: 0.9, g: 0.85, b: 0.75 },
+            isStatic: true
+        },
+        // Колонна 3
+        {
+            type: 'cube',
+            position: { x: -10, y: 5, z: 12 },
+            scale: { x: 1.5, y: 10, z: 1.5 },
+            color: { r: 0.9, g: 0.85, b: 0.75 },
+            isStatic: true
+        },
+        // Колонна 4
+        {
+            type: 'cube',
+            position: { x: 10, y: 5, z: 12 },
+            scale: { x: 1.5, y: 10, z: 1.5 },
+            color: { r: 0.9, g: 0.85, b: 0.75 },
+            isStatic: true
+        },
+        // Люстра (центр)
+        {
+            type: 'cube',
+            position: { x: 0, y: 8, z: 0 },
+            scale: { x: 4, y: 0.3, z: 4 },
+            color: { r: 1.0, g: 0.9, b: 0.6 },
+            isStatic: true
+        },
+        // Spawn
+        {
+            type: 'spawn',
+            position: { x: 0, y: 2, z: 15 }
+        }
+    ],
+    settings: {
+        gravity: -20,
+        skyColor: { r: 0.1, g: 0.1, b: 0.15 },
+        ambientColor: { r: 0.6, g: 0.55, b: 0.5 },
+        fogEnabled: false,
+        spawnPoint: { x: 0, y: 2, z: 15 }
     },
     version: 1
 };
@@ -667,26 +861,59 @@ const defaultWorldBuildData = {
 mongoose.connect(process.env.MONGODB_URI)
     .then(async () => {
         console.log('MongoDB connected');
+        
         try {
             await mongoose.connection.collection('users').dropIndex('email_1');
         } catch (e) {}
         
-        const gameCount = await Game.countDocuments();
-        if (gameCount === 0) {
-            await Game.create({
-                id: 'tublox-world',
-                title: 'TuBlox World',
-                description: 'Welcome to TuBlox World!',
+        // Удаляем старые игры и создаём новые
+        await Game.deleteMany({});
+        console.log('Cleared old games');
+        
+        const games = [
+            {
+                id: 'baseplate',
+                title: 'Baseplate',
+                description: 'A simple green baseplate. Perfect for hanging out with friends!',
                 creator: 'TuBlox',
                 creatorId: 1,
-                thumbnail: '/img/games/tublox-world.png',
+                thumbnail: '',
                 featured: true,
-                visits: 0,
+                category: 'sandbox',
+                visits: 1250,
                 maxPlayers: 50,
-                buildData: defaultWorldBuildData
-            });
-            console.log('Default game created');
-        }
+                buildData: baseplateBuildData
+            },
+            {
+                id: 'obby',
+                title: 'Obby',
+                description: 'Jump through colorful platforms and reach the golden finish! Can you complete it?',
+                creator: 'TuBlox',
+                creatorId: 1,
+                thumbnail: '',
+                featured: true,
+                category: 'obby',
+                visits: 3420,
+                maxPlayers: 30,
+                buildData: obbyBuildData
+            },
+            {
+                id: 'hotel',
+                title: 'Hotel',
+                description: 'A beautiful hotel lobby. Relax on the sofas and meet new people!',
+                creator: 'TuBlox',
+                creatorId: 1,
+                thumbnail: '',
+                featured: true,
+                category: 'roleplay',
+                visits: 890,
+                maxPlayers: 40,
+                buildData: hotelBuildData
+            }
+        ];
+        
+        await Game.insertMany(games);
+        console.log(`Created ${games.length} games: Baseplate, Obby, Hotel`);
     })
     .catch(err => console.error('MongoDB error:', err));
 
@@ -930,25 +1157,64 @@ app.post('/api/logout', (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// API - GAMES
+// API - GAMES (С ПАГИНАЦИЕЙ)
 // ═══════════════════════════════════════════════════════════════
 
 app.get('/api/games', async (req, res) => {
     try {
-        const { featured, limit } = req.query;
+        const { 
+            featured, 
+            category,
+            page = 1, 
+            limit = 3
+        } = req.query;
+        
+        const pageNum = Math.max(1, parseInt(page) || 1);
+        const limitNum = Math.min(12, Math.max(1, parseInt(limit) || 3));
+        const skip = (pageNum - 1) * limitNum;
         
         let query = {};
+        
         if (featured === 'true') {
             query.featured = true;
         }
         
+        if (category && category !== 'all') {
+            query.category = category;
+        }
+        
+        const totalGames = await Game.countDocuments(query);
+        const totalPages = Math.ceil(totalGames / limitNum);
+        
         const games = await Game.find(query)
             .select('-buildData')
             .sort({ featured: -1, visits: -1 })
-            .limit(parseInt(limit) || 50);
+            .skip(skip)
+            .limit(limitNum);
         
-        res.json({ success: true, games });
+        // Обновляем activePlayers из памяти
+        const gamesWithPlayers = games.map(g => {
+            const gameServer = gameServers.get(g.id);
+            return {
+                ...g.toObject(),
+                activePlayers: gameServer ? gameServer.players.size : 0
+            };
+        });
+        
+        res.json({ 
+            success: true, 
+            games: gamesWithPlayers,
+            pagination: {
+                currentPage: pageNum,
+                totalPages: totalPages,
+                totalGames: totalGames,
+                gamesPerPage: limitNum,
+                hasNextPage: pageNum < totalPages,
+                hasPrevPage: pageNum > 1
+            }
+        });
     } catch (err) {
+        console.error('[API] Games error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
@@ -961,7 +1227,16 @@ app.get('/api/game/:id', async (req, res) => {
             return res.status(404).json({ success: false, message: 'Game not found' });
         }
         
-        res.json({ success: true, game });
+        const gameServer = gameServers.get(req.params.id);
+        const activePlayers = gameServer ? gameServer.players.size : 0;
+        
+        res.json({ 
+            success: true, 
+            game: {
+                ...game.toObject(),
+                activePlayers
+            }
+        });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Server error' });
     }
@@ -1070,7 +1345,7 @@ app.get('/api/game/validate/:token', async (req, res) => {
         if (game && game.buildData) {
             response.buildData = game.buildData;
         } else {
-            response.buildData = defaultWorldBuildData;
+            response.buildData = baseplateBuildData;
         }
         
         res.json(response);

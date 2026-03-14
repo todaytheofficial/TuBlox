@@ -27,11 +27,13 @@ function toast(msg, type = 'success') {
 }
 
 // ============================================
-// Current User
+// Current User & State
 // ============================================
 let currentUser = null;
 let currentLaunchGameId = null;
 let currentGameServers = [];
+let currentPage = 1;
+let gamesPerPage = 3;
 
 // ============================================
 // Auth
@@ -194,6 +196,84 @@ function featuredGameHTML(game) {
     `;
 }
 
+function renderPagination(pagination) {
+    const container = document.getElementById('pagination');
+    if (!container || !pagination) {
+        if (container) container.innerHTML = '';
+        return;
+    }
+    
+    const { currentPage, totalPages } = pagination;
+    
+    if (totalPages <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    let html = '';
+    
+    // Prev button
+    html += `
+        <button class="pagination-btn" onclick="goToPage(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"/>
+            </svg>
+        </button>
+    `;
+    
+    // Page numbers
+    const maxVisible = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+    
+    if (endPage - startPage + 1 < maxVisible) {
+        startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+    
+    if (startPage > 1) {
+        html += `<button class="pagination-btn" onclick="goToPage(1)">1</button>`;
+        if (startPage > 2) {
+            html += `<span class="pagination-info">...</span>`;
+        }
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        html += `
+            <button class="pagination-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">
+                ${i}
+            </button>
+        `;
+    }
+    
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            html += `<span class="pagination-info">...</span>`;
+        }
+        html += `<button class="pagination-btn" onclick="goToPage(${totalPages})">${totalPages}</button>`;
+    }
+    
+    // Next button
+    html += `
+        <button class="pagination-btn" onclick="goToPage(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"/>
+            </svg>
+        </button>
+    `;
+    
+    container.innerHTML = html;
+}
+
+async function goToPage(page) {
+    currentPage = page;
+    await loadAllGames();
+    
+    const gamesSection = document.querySelector('.games-container');
+    if (gamesSection) {
+        gamesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
 async function loadFeaturedGame() {
     const container = document.getElementById('featured-game');
     if (!container) return;
@@ -216,16 +296,36 @@ async function loadAllGames() {
     const container = document.getElementById('all-games');
     if (!container) return;
     
+    container.innerHTML = `
+        <div class="loading-placeholder">
+            <div class="spinner"></div>
+        </div>
+    `;
+    
     try {
-        const res = await fetch('/api/games');
+        const res = await fetch(`/api/games?page=${currentPage}&limit=${gamesPerPage}`);
         const data = await res.json();
         
         if (data.success && data.games.length > 0) {
             container.innerHTML = data.games.map(g => gameCardHTML(g, true)).join('');
+            renderPagination(data.pagination);
+        } else if (data.success && data.games.length === 0) {
+            container.innerHTML = `
+                <div class="games-empty">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <rect x="2" y="6" width="20" height="12" rx="2"/>
+                        <path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/>
+                    </svg>
+                    <h3>No games yet</h3>
+                    <p>Check back later for new experiences!</p>
+                </div>
+            `;
+            renderPagination(null);
         } else {
             container.innerHTML = '<p class="no-content">No games available</p>';
         }
     } catch (e) {
+        console.error('Load games error:', e);
         container.innerHTML = '<p class="no-content">Error loading games</p>';
     }
 }
@@ -390,10 +490,8 @@ function detectClientLaunch(launchUrl) {
         window.addEventListener('blur', onBlur);
         document.addEventListener('visibilitychange', onVisibility);
         
-        // Пытаемся открыть протокол
         window.location.href = launchUrl;
         
-        // Если за 3.5 секунды ничего — клиент не установлен
         setTimeout(() => {
             if (!detected) {
                 cleanup();
@@ -421,7 +519,6 @@ async function launchGame(gameId) {
             return;
         }
         
-        // Формируем данные для клиента (WebSocket connection)
         const launchData = {
             username: currentUser.username,
             odilId: currentUser.odilId,
@@ -439,19 +536,15 @@ async function launchGame(gameId) {
         const launchUrl = 'tublox://play/' + base64;
         
         console.log('[Launch] URL:', launchUrl);
-        console.log('[Launch] Data:', launchData);
         
-        // Пытаемся открыть клиент
         const clientFound = await detectClientLaunch(launchUrl);
         
         if (clientFound) {
             setLaunchState('success');
             setTimeout(() => {
                 closePlayModal();
-                toast('Game launched! 🎮');
-            }, 3000);
+            }, 2000);
         } else {
-            // Клиент не найден — предлагаем скачать
             setLaunchState('notfound');
         }
         
@@ -573,7 +666,6 @@ async function loadGameServers() {
                                 <span class="dot"></span>
                                 ${server.players}/${server.maxPlayers} players
                             </span>
-                            ${server.ping ? `<span class="server-ping">${server.ping}ms</span>` : ''}
                         </div>
                     </div>
                     <button class="btn btn-primary server-join-btn">Join</button>

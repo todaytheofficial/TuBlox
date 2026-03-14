@@ -84,11 +84,16 @@ function broadcastToGame(gameId, data, excludeOdilId = null) {
     const message = typeof data === 'string' ? data : JSON.stringify(data);
     
     game.players.forEach((player, odilId) => {
-        if (odilId !== excludeOdilId && player.ws && player.ws.readyState === WebSocket.OPEN) {
+        // ВАЖНО: Исключаем указанного игрока
+        if (excludeOdilId !== null && odilId === excludeOdilId) {
+            return;  // Пропускаем
+        }
+        
+        if (player.ws && player.ws.readyState === WebSocket.OPEN) {
             try {
                 player.ws.send(message);
             } catch (err) {
-                console.error(`[WS] Failed to send to ${odilId}:`, err.message);
+                console.error(`[WS] Send error to ${odilId}:`, err.message);
             }
         }
     });
@@ -313,57 +318,57 @@ wss.on('connection', (ws, req) => {
                 }
 
                 case PacketType.PLAYER_STATE: {
-                    if (!clientGameId || !clientOdilId || !isConnected) break;
+    if (!clientGameId || !clientOdilId || !isConnected) break;
 
-                    const game = gameServers.get(clientGameId);
-                    if (!game) break;
+    const game = gameServers.get(clientGameId);
+    if (!game) break;
 
-                    const player = game.players.get(clientOdilId);
-                    if (player) {
-                        player.position = { 
-                            x: data.posX || 0, 
-                            y: data.posY || 0, 
-                            z: data.posZ || 0 
-                        };
-                        player.rotation = { 
-                            x: data.rotX || 0, 
-                            y: data.rotY || 0, 
-                            z: data.rotZ || 0 
-                        };
-                        player.velocity = { 
-                            x: data.velX || 0, 
-                            y: data.velY || 0, 
-                            z: data.velZ || 0 
-                        };
-                        player.animationId = data.animationId || 0;
-                        player.isGrounded = !!data.isGrounded;
-                        player.isJumping = !!data.isJumping;
-                        player.isSprinting = !!data.isSprinting;
-                        player.isInWater = !!data.isInWater;
-                        player.lastUpdate = Date.now();
-                    }
+    const player = game.players.get(clientOdilId);
+    if (player) {
+        player.position = { 
+            x: data.posX || 0, 
+            y: data.posY || 0, 
+            z: data.posZ || 0 
+        };
+        player.rotation = { 
+            x: data.rotX || 0, 
+            y: data.rotY || 0, 
+            z: data.rotZ || 0 
+        };
+        player.velocity = { 
+            x: data.velX || 0, 
+            y: data.velY || 0, 
+            z: data.velZ || 0 
+        };
+        player.animationId = data.animationId || 0;
+        player.isGrounded = !!data.isGrounded;
+        player.isJumping = !!data.isJumping;
+        player.isSprinting = !!data.isSprinting;
+        player.isInWater = !!data.isInWater;
+        player.lastUpdate = Date.now();
+    }
 
-                    // Рассылаем другим
-                    broadcastToGame(clientGameId, {
-                        type: PacketType.PLAYER_STATE,
-                        odilId: clientOdilId,
-                        posX: data.posX || 0,
-                        posY: data.posY || 0,
-                        posZ: data.posZ || 0,
-                        rotX: data.rotX || 0,
-                        rotY: data.rotY || 0,
-                        rotZ: data.rotZ || 0,
-                        velX: data.velX || 0,
-                        velY: data.velY || 0,
-                        velZ: data.velZ || 0,
-                        animationId: data.animationId || 0,
-                        isGrounded: !!data.isGrounded,
-                        isJumping: !!data.isJumping,
-                        isSprinting: !!data.isSprinting,
-                        isInWater: !!data.isInWater
-                    }, clientOdilId);
-                    break;
-                }
+    // ВАЖНО: Рассылаем ТОЛЬКО другим игрокам, НЕ отправителю!
+    broadcastToGame(clientGameId, {
+        type: PacketType.PLAYER_STATE,
+        odilId: clientOdilId,  // ID отправителя
+        posX: data.posX || 0,
+        posY: data.posY || 0,
+        posZ: data.posZ || 0,
+        rotX: data.rotX || 0,
+        rotY: data.rotY || 0,
+        rotZ: data.rotZ || 0,
+        velX: data.velX || 0,
+        velY: data.velY || 0,
+        velZ: data.velZ || 0,
+        animationId: data.animationId || 0,
+        isGrounded: !!data.isGrounded,
+        isJumping: !!data.isJumping,
+        isSprinting: !!data.isSprinting,
+        isInWater: !!data.isInWater
+    }, clientOdilId);  // <-- ИСКЛЮЧАЕМ отправителя!
+    break;
+}
 
                 case PacketType.CHAT_MESSAGE: {
                     if (!clientGameId || !isConnected) break;

@@ -11,8 +11,11 @@ let currentPostId = null;
 // ============================================
 // Init
 // ============================================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const path = location.pathname;
+    
+    // Ждём загрузки пользователя
+    await waitForUser();
     
     if (path === '/TuForums') {
         initForumMain();
@@ -37,6 +40,33 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// Ждём пока currentUser загрузится
+async function waitForUser() {
+    // Если currentUser уже есть
+    if (typeof currentUser !== 'undefined' && currentUser !== null) {
+        return;
+    }
+    
+    // Ждём максимум 3 секунды
+    for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 100));
+        if (typeof currentUser !== 'undefined' && currentUser !== null) {
+            return;
+        }
+    }
+    
+    // Если не загрузился - пробуем загрузить сами
+    try {
+        const res = await fetch('/api/user');
+        const data = await res.json();
+        if (data.success) {
+            currentUser = data.user;
+        }
+    } catch (err) {
+        console.log('User not logged in');
+    }
+}
 
 // ============================================
 // Main Forum Page

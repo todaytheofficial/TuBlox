@@ -480,7 +480,7 @@ async function launchGame(gameId) {
             setLaunchState('success');
             setTimeout(() => {
                 closePlayModal();
-                toast('Game launched! 🎮');
+                toast('Game launched!');
             }, 3000);
         } else {
             setLaunchState('notfound');
@@ -717,60 +717,58 @@ function formatNumber(n) {
     if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
     return n.toString();
 }
-
 // ============================================
 // Init
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
-    // Auth
     if (document.querySelector('.auth-tabs')) {
         initTabs();
         document.getElementById('register-form')?.addEventListener('submit', register);
         document.getElementById('login-form')?.addEventListener('submit', login);
     }
     
-    // Home
-    if (document.querySelector('.home-page')) {
-        loadUser();
-        loadFeaturedGame();
-        document.getElementById('logout-btn')?.addEventListener('click', logout);
+    if (document.querySelector('.home-page')) { 
+        loadUser(); 
+        loadFeaturedGame(); 
+        document.getElementById('logout-btn')?.addEventListener('click', logout); 
     }
     
-    // Games
-    if (document.querySelector('.games-page')) {
-        loadUser();
-        loadAllGames();
-        document.getElementById('logout-btn')?.addEventListener('click', logout);
+    if (document.querySelector('.games-page')) { 
+        loadUser(); 
+        loadAllGames(); 
+        document.getElementById('logout-btn')?.addEventListener('click', logout); 
     }
     
-    // Game
-    if (document.querySelector('.game-page')) {
-        loadUser();
-        loadGamePage();
-        document.getElementById('logout-btn')?.addEventListener('click', logout);
+    if (document.querySelector('.game-page')) { 
+        loadUser(); 
+        loadGamePage(); 
+        document.getElementById('logout-btn')?.addEventListener('click', logout); 
     }
     
-    // Users
-    if (document.querySelector('.users-page')) {
-        loadUser();
-        loadUsers();
-        document.getElementById('logout-btn')?.addEventListener('click', logout);
+    if (document.querySelector('.users-page')) { 
+        loadUser(); 
+        loadUsers(); 
     }
     
-    // Profile
-    if (document.querySelector('.profile-page')) {
-        loadUser();
-        loadProfile();
-        document.getElementById('logout-btn')?.addEventListener('click', logout);
+    if (document.querySelector('.profile-page')) { 
+        loadUser(); 
+        loadProfile(); 
     }
     
-    // Modal backdrop close
+    // ДОБАВЬ ЭТИ СТРОКИ ДЛЯ ФОРУМА
+    if (document.querySelector('.forum-page')) { 
+        loadUser(); 
+        document.getElementById('logout-btn')?.addEventListener('click', logout); 
+    }
+    
     document.querySelectorAll('.modal-backdrop').forEach(el => {
-        el.onclick = () => {
-            const modal = el.closest('.modal');
-            if (modal) modal.classList.remove('active');
-        };
+        el.onclick = () => el.closest('.modal')?.classList.remove('active');
     });
+    
+    const disconnectBtn = document.getElementById('hud-disconnect');
+    if (disconnectBtn) {
+        disconnectBtn.addEventListener('click', disconnectGame);
+    }
 });
 
 // ============================================

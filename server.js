@@ -1,4 +1,4 @@
-// server.js - ПОЛНАЯ ВЕРСИЯ С TUFORUMS
+// server.js - TuBlox с форумом (часть 1)
 
 require('dotenv').config();
 const express = require('express');
@@ -14,195 +14,6 @@ const WebSocket = require('ws');
 
 const app = express();
 const server = http.createServer(app);
-
-// ═══════════════════════════════════════════════════════════════
-// BANNED WORDS & DOMAIN PATTERNS
-// ═══════════════════════════════════════════════════════════════
-
-const BANNED_WORDS = [
-    'fuck', 'fucking', 'fucker', 'fucked', 'fuk', 'fck', 'phuck',
-    'shit', 'shitting', 'shitty', 'crap', 'bullshit',
-    'bitch', 'bitching', 'bastard', 'whore', 'slut', 'hoe',
-    'ass', 'asshole', 'arse', 'arsehole', 'butt', 'butthole',
-    'dick', 'cock', 'penis', 'prick', 'dong', 'schlong',
-    'pussy', 'vagina', 'cunt', 'twat', 'beaver',
-    'tits', 'boobs', 'titties', 'breasts', 'nipple',
-    'porn', 'porno', 'pornography', 'xxx', 'nsfw',
-    'sex', 'sexy', 'sexual', 'rape', 'molest',
-    'nude', 'naked', 'nudes', 'strip', 'stripper',
-    'nigger', 'nigga', 'negro', 'nig', 'nigg',
-    'faggot', 'fag', 'homo', 'queer', 'gay', 'lesbian', 'tranny',
-    'retard', 'retarded', 'idiot', 'moron', 'stupid',
-    'kill', 'murder', 'suicide', 'kms', 'kys', 'die', 'death',
-    'nazi', 'hitler', 'holocaust', 'terrorist', 'terrorism',
-    'bomb', 'bombing', 'attack', 'shooter', 'shooting',
-    'drug', 'drugs', 'cocaine', 'heroin', 'meth', 'weed', 'marijuana',
-    'crack', 'lsd', 'ecstasy', 'molly', 'pills',
-    'admin', 'administrator', 'moderator', 'mod', 'staff', 'owner',
-    'official', 'tublox', 'system', 'support', 'help', 'bot',
-    'server', 'console', 'root', 'superuser', 'sysadmin',
-    'хуй', 'хуя', 'хуи', 'хую', 'хуё', 'хуе', 'хер', 'хрен',
-    'пизд', 'пизде', 'пизду', 'пиздец', 'пиздюк', 'писюн',
-    'ебл', 'ебал', 'ебать', 'ебу', 'ебёт', 'ебет', 'ебля', 'еби',
-    'ебан', 'ебануть', 'ебанутый', 'ебаный', 'наебать', 'проебать',
-    'блят', 'блядь', 'бляд', 'блять', 'бля',
-    'сука', 'суки', 'суку', 'сучка', 'сучий',
-    'член', 'члена', 'члену', 'членом',
-    'жопа', 'жопу', 'жопой', 'жопе', 'жоп',
-    'залупа', 'залупы', 'залупу',
-    'мудак', 'мудака', 'мудаков', 'мудила', 'мудило',
-    'гандон', 'гондон', 'презерватив',
-    'шлюха', 'шлюхи', 'шлюху', 'шалава', 'путана',
-    'курва', 'курвы', 'курву',
-    'педик', 'педики', 'педиков', 'пидор', 'пидорас', 'пидр',
-    'гей', 'геи', 'гея', 'лесби', 'лесбиянка', 'трансвестит',
-    'дебил', 'дебилы', 'дебила', 'дебилизм',
-    'идиот', 'идиота', 'идиоты', 'идиотизм',
-    'даун', 'дауны', 'дауна',
-    'порно', 'порнуха', 'порнография',
-    'секс', 'сексом', 'сексуальный',
-    'трах', 'трахать', 'трахал', 'трахнуть',
-    'ссал', 'ссать', 'ссу', 'ссыт',
-    'срал', 'срать', 'сру', 'срёт', 'срет',
-    'говно', 'говна', 'говну', 'гавно',
-    'дерьмо', 'дерьма', 'дерьму',
-    'убить', 'убийство', 'убийца',
-    'террор', 'терроризм', 'террорист',
-    'взрыв', 'взрывать', 'бомба', 'бомбить',
-    'наркот', 'наркота', 'наркотик', 'наркоман',
-    'героин', 'кокаин', 'план', 'травка', 'анаша', 'спайс',
-    'админ', 'модер', 'модератор', 'персонал', 'поддержка', 'владелец',
-    'p0rn', 's3x', 'fvck', 'fuk', 'azz', 'd1ck', 'b1tch',
-    'хyй', 'пиzда', 'блyть', 'сyка'
-];
-
-const DOMAIN_PATTERNS = [
-    '.com', '.net', '.org', '.ru', '.info', '.biz', '.co', '.io', '.gg',
-    '.me', '.tv', '.cc', '.us', '.uk', '.de', '.fr', '.it', '.es', '.cn',
-    '.jp', '.kr', '.in', '.au', '.ca', '.br', '.mx', '.nl', '.se', '.no',
-    '.dk', '.fi', '.pl', '.cz', '.at', '.ch', '.be', '.pt', '.gr', '.tr',
-    '.xyz', '.online', '.site', '.website', '.store', '.app', '.dev', '.ai',
-    '.tech', '.pro', '.club', '.vip', '.lol', '.game', '.games', '.fun',
-    '.zone', '.space', '.live', '.world', '.today', '.life', '.link',
-    'http://', 'https://', 'www.', 'ftp://', '://', 'discord.gg',
-    'bit.ly', 't.me', 'youtu.be', 'goo.gl', 'tinyurl'
-];
-
-// ═══════════════════════════════════════════════════════════════
-// STAFF USERS
-// ═══════════════════════════════════════════════════════════════
-
-const STAFF_USERNAMES = ['today_idk'];
-
-function isStaffUser(username) {
-    if (!username) return false;
-    return STAFF_USERNAMES.includes(username.toLowerCase());
-}
-
-// ═══════════════════════════════════════════════════════════════
-// VALIDATION & CENSORSHIP
-// ═══════════════════════════════════════════════════════════════
-
-function validateUsername(username) {
-    if (!username || typeof username !== 'string') {
-        return { valid: false, error: 'Username is required' };
-    }
-
-    username = username.trim();
-    
-    if (username.length < 3) {
-        return { valid: false, error: 'Username must be at least 3 characters' };
-    }
-    
-    if (username.length > 20) {
-        return { valid: false, error: 'Username must be 20 characters or less' };
-    }
-    
-    const formatRegex = /^[a-zA-Z0-9_]+$/;
-    if (!formatRegex.test(username)) {
-        return { valid: false, error: 'Username can only contain letters, numbers and underscore' };
-    }
-    
-    if (/__/.test(username)) {
-        return { valid: false, error: 'Username cannot contain consecutive underscores' };
-    }
-    
-    if (username.startsWith('_') || username.endsWith('_')) {
-        return { valid: false, error: 'Username cannot start or end with underscore' };
-    }
-    
-    if (/(.)\1{3,}/.test(username)) {
-        return { valid: false, error: 'Username contains too many repeated characters' };
-    }
-    
-    const lowerUsername = username.toLowerCase();
-    
-    for (const pattern of DOMAIN_PATTERNS) {
-        if (lowerUsername.includes(pattern.toLowerCase())) {
-            return { valid: false, error: 'Username cannot contain links or domains' };
-        }
-    }
-    
-    for (const word of BANNED_WORDS) {
-        if (lowerUsername.includes(word.toLowerCase())) {
-            return { valid: false, error: 'Username contains inappropriate content' };
-        }
-    }
-    
-    const leetspeakMap = {
-        '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's',
-        '7': 't', '8': 'b', '@': 'a', '$': 's', '!': 'i'
-    };
-    
-    let normalizedUsername = lowerUsername;
-    for (const [leet, normal] of Object.entries(leetspeakMap)) {
-        normalizedUsername = normalizedUsername.replace(new RegExp(leet, 'g'), normal);
-    }
-    
-    for (const word of BANNED_WORDS) {
-        if (normalizedUsername.includes(word.toLowerCase())) {
-            return { valid: false, error: 'Username contains inappropriate content' };
-        }
-    }
-    
-    const bypassPatterns = [
-        /p+o+r+n+/i, /s+e+x+/i, /f+u+c+k+/i, /d+i+c+k+/i,
-        /a+s+s+/i, /b+i+t+c+h+/i, /n+i+g+g+/i,
-        /х+у+й+/i, /п+и+з+д+/i, /е+б+л+/i, /б+л+я+т+/i
-    ];
-    
-    for (const pattern of bypassPatterns) {
-        if (pattern.test(username)) {
-            return { valid: false, error: 'Username contains inappropriate content' };
-        }
-    }
-    
-    const suspiciousChars = /[ΑΒΕΖΗΙΚΜΝΟΡΤΥΧ]/i;
-    if (suspiciousChars.test(username)) {
-        return { valid: false, error: 'Username contains invalid characters' };
-    }
-    
-    return { valid: true };
-}
-
-function censorText(text) {
-    if (!text) return '';
-    
-    let censored = text;
-    
-    for (const word of BANNED_WORDS) {
-        const regex = new RegExp(word, 'gi');
-        censored = censored.replace(regex, '*'.repeat(word.length));
-    }
-    
-    for (const pattern of DOMAIN_PATTERNS) {
-        const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(escaped, 'gi');
-        censored = censored.replace(regex, '[link]');
-    }
-    
-    return censored;
-}
 
 // ═══════════════════════════════════════════════════════════════
 // KEEP ALIVE
@@ -267,13 +78,9 @@ const PacketType = {
 };
 
 function sendToClient(ws, data) {
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        return false;
-    }
-    
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
     try {
-        const message = typeof data === 'string' ? data : JSON.stringify(data);
-        ws.send(message);
+        ws.send(typeof data === 'string' ? data : JSON.stringify(data));
         return true;
     } catch (err) {
         console.error('[WS] Send error:', err.message);
@@ -289,10 +96,7 @@ function broadcastToGame(gameId, data, excludeOdilId = null) {
     let sentCount = 0;
     
     game.players.forEach((player, odilId) => {
-        if (excludeOdilId !== null && odilId === excludeOdilId) {
-            return;
-        }
-        
+        if (excludeOdilId !== null && odilId === excludeOdilId) return;
         if (player.ws && player.ws.readyState === WebSocket.OPEN) {
             try {
                 player.ws.send(message);
@@ -331,22 +135,15 @@ function removePlayerFromGame(gameId, odilId) {
     game.players.delete(odilId);
     connectedClients.delete(odilId);
 
-    broadcastToGame(gameId, {
-        type: PacketType.PLAYER_LEAVE,
-        odilId: odilId
-    });
+    broadcastToGame(gameId, { type: PacketType.PLAYER_LEAVE, odilId });
 
     if (game.hostOdilId === odilId) {
         if (game.players.size > 0) {
             const newHostId = game.players.keys().next().value;
             game.hostOdilId = newHostId;
-            
             const newHost = game.players.get(newHostId);
             if (newHost && newHost.ws) {
-                sendToClient(newHost.ws, {
-                    type: PacketType.HOST_ASSIGN,
-                    isHost: true
-                });
+                sendToClient(newHost.ws, { type: PacketType.HOST_ASSIGN, isHost: true });
                 console.log(`[WS] New host for ${gameId}: ${newHost.username}`);
             }
         } else {
@@ -355,12 +152,7 @@ function removePlayerFromGame(gameId, odilId) {
         }
     }
 
-    Game.findOneAndUpdate(
-        { id: gameId },
-        { activePlayers: game.players.size }
-    ).catch(err => console.error('[DB] Update error:', err));
-
-    console.log(`[WS] ${gameId} now has ${game.players.size} players`);
+    Game.findOneAndUpdate({ id: gameId }, { activePlayers: game.players.size }).catch(err => console.error('[DB] Update error:', err));
 }
 
 wss.on('connection', (ws, req) => {
@@ -371,22 +163,16 @@ wss.on('connection', (ws, req) => {
     let messageQueue = [];
     let isProcessing = false;
 
-    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    console.log(`[WS] New connection from ${clientIp}`);
-
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
 
     async function processMessageQueue() {
         if (isProcessing || messageQueue.length === 0) return;
-        
         isProcessing = true;
-        
         while (messageQueue.length > 0) {
             const data = messageQueue.shift();
             await handleMessage(data);
         }
-        
         isProcessing = false;
     }
 
@@ -395,31 +181,21 @@ wss.on('connection', (ws, req) => {
             switch (data.type) {
                 case PacketType.CONNECT_REQUEST: {
                     if (!data.odilId || typeof data.odilId !== 'number') {
-                        console.error('[WS] Invalid odilId in CONNECT_REQUEST');
-                        sendToClient(ws, {
-                            type: PacketType.CONNECT_RESPONSE,
-                            success: false,
-                            message: 'Invalid odilId'
-                        });
+                        sendToClient(ws, { type: PacketType.CONNECT_RESPONSE, success: false, message: 'Invalid odilId' });
                         return;
                     }
 
                     const existingClient = connectedClients.get(data.odilId);
                     if (existingClient && existingClient.ws !== ws) {
-                        console.log(`[WS] Closing old connection for ${data.odilId}`);
-                        if (existingClient.gameId) {
-                            removePlayerFromGame(existingClient.gameId, data.odilId);
-                        }
+                        if (existingClient.gameId) removePlayerFromGame(existingClient.gameId, data.odilId);
                         if (existingClient.ws && existingClient.ws.readyState === WebSocket.OPEN) {
                             existingClient.ws.close(1000, 'Reconnecting');
                         }
                     }
 
                     clientOdilId = data.odilId;
-                    clientGameId = data.gameId || 'tublox-world';
+                    clientGameId = data.gameId || 'baseplate';
                     clientUsername = (data.username || `Player${clientOdilId}`).substring(0, 32);
-
-                    console.log(`[WS] Connect: ${clientUsername} (#${clientOdilId}) -> ${clientGameId}`);
 
                     const game = getOrCreateGameServer(clientGameId);
                     
@@ -427,13 +203,9 @@ wss.on('connection', (ws, req) => {
                     if (game.hostOdilId === null || game.players.size === 0) {
                         game.hostOdilId = clientOdilId;
                         isHost = true;
-                        console.log(`[WS] ${clientUsername} is now HOST of ${clientGameId}`);
-                        
                         try {
                             const gameDoc = await Game.findOne({ id: clientGameId });
-                            if (gameDoc && gameDoc.buildData) {
-                                game.buildData = gameDoc.buildData;
-                            }
+                            if (gameDoc && gameDoc.buildData) game.buildData = gameDoc.buildData;
                         } catch (err) {
                             console.error('[DB] Load buildData error:', err);
                         }
@@ -442,110 +214,64 @@ wss.on('connection', (ws, req) => {
                     const existingPlayers = [];
                     game.players.forEach((player, odilId) => {
                         if (odilId !== clientOdilId) {
-                            existingPlayers.push({
-                                odilId: odilId,
-                                username: player.username,
-                                position: { ...player.position }
-                            });
+                            existingPlayers.push({ odilId, username: player.username, position: { ...player.position } });
                         }
                     });
 
                     const spawnPosition = { x: 0, y: 5, z: 0 };
 
                     game.players.set(clientOdilId, {
-                        ws,
-                        username: clientUsername,
-                        position: { ...spawnPosition },
-                        rotation: { x: 0, y: 0, z: 0 },
-                        velocity: { x: 0, y: 0, z: 0 },
-                        animationId: 0,
-                        isGrounded: false,
-                        isJumping: false,
-                        isSprinting: false,
-                        isInWater: false,
-                        lastUpdate: Date.now(),
-                        connectedAt: Date.now()
+                        ws, username: clientUsername,
+                        position: { ...spawnPosition }, rotation: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 },
+                        animationId: 0, isGrounded: false, isJumping: false, isSprinting: false, isInWater: false,
+                        lastUpdate: Date.now(), connectedAt: Date.now()
                     });
 
-                    connectedClients.set(clientOdilId, { 
-                        ws, 
-                        gameId: clientGameId, 
-                        username: clientUsername 
-                    });
-
+                    connectedClients.set(clientOdilId, { ws, gameId: clientGameId, username: clientUsername });
                     isConnected = true;
 
-                    Game.findOneAndUpdate(
-                        { id: clientGameId },
-                        { activePlayers: game.players.size }
-                    ).catch(err => console.error('[DB] Update error:', err));
+                    Game.findOneAndUpdate({ id: clientGameId }, { activePlayers: game.players.size }).catch(err => console.error('[DB] Update error:', err));
 
                     sendToClient(ws, {
-                        type: PacketType.CONNECT_RESPONSE,
-                        success: true,
-                        odilId: clientOdilId,
-                        isHost: isHost,
-                        spawnX: spawnPosition.x,
-                        spawnY: spawnPosition.y,
-                        spawnZ: spawnPosition.z,
-                        message: 'Connected!'
+                        type: PacketType.CONNECT_RESPONSE, success: true, odilId: clientOdilId, isHost,
+                        spawnX: spawnPosition.x, spawnY: spawnPosition.y, spawnZ: spawnPosition.z, message: 'Connected!'
                     });
 
                     if (isHost && game.buildData) {
-                        sendToClient(ws, {
-                            type: PacketType.BUILD_DATA,
-                            buildData: game.buildData
-                        });
+                        sendToClient(ws, { type: PacketType.BUILD_DATA, buildData: game.buildData });
                     }
 
                     setTimeout(() => {
                         if (ws.readyState !== WebSocket.OPEN) return;
-                        
                         for (const player of existingPlayers) {
                             sendToClient(ws, {
-                                type: PacketType.PLAYER_JOIN,
-                                odilId: player.odilId,
-                                username: player.username,
-                                posX: player.position.x,
-                                posY: player.position.y,
-                                posZ: player.position.z
+                                type: PacketType.PLAYER_JOIN, odilId: player.odilId, username: player.username,
+                                posX: player.position.x, posY: player.position.y, posZ: player.position.z
                             });
                         }
-                        
                         setTimeout(() => {
                             broadcastToGame(clientGameId, {
-                                type: PacketType.PLAYER_JOIN,
-                                odilId: clientOdilId,
-                                username: clientUsername,
-                                posX: spawnPosition.x,
-                                posY: spawnPosition.y,
-                                posZ: spawnPosition.z
+                                type: PacketType.PLAYER_JOIN, odilId: clientOdilId, username: clientUsername,
+                                posX: spawnPosition.x, posY: spawnPosition.y, posZ: spawnPosition.z
                             }, clientOdilId);
                         }, 100);
-                        
                     }, 200);
-
-                    console.log(`[WS] ${clientGameId} now has ${game.players.size} players`);
                     break;
                 }
 
                 case PacketType.PLAYER_STATE: {
                     if (!clientGameId || !clientOdilId || !isConnected) break;
-
                     const game = gameServers.get(clientGameId);
                     if (!game) break;
-
                     const player = game.players.get(clientOdilId);
                     if (!player) break;
 
                     const posX = typeof data.posX === 'number' && isFinite(data.posX) ? data.posX : player.position.x;
                     const posY = typeof data.posY === 'number' && isFinite(data.posY) ? data.posY : player.position.y;
                     const posZ = typeof data.posZ === 'number' && isFinite(data.posZ) ? data.posZ : player.position.z;
-                    
                     const rotX = typeof data.rotX === 'number' && isFinite(data.rotX) ? data.rotX : 0;
                     const rotY = typeof data.rotY === 'number' && isFinite(data.rotY) ? data.rotY : 0;
                     const rotZ = typeof data.rotZ === 'number' && isFinite(data.rotZ) ? data.rotZ : 0;
-                    
                     const velX = typeof data.velX === 'number' && isFinite(data.velX) ? data.velX : 0;
                     const velY = typeof data.velY === 'number' && isFinite(data.velY) ? data.velY : 0;
                     const velZ = typeof data.velZ === 'number' && isFinite(data.velZ) ? data.velZ : 0;
@@ -561,58 +287,35 @@ wss.on('connection', (ws, req) => {
                     player.lastUpdate = Date.now();
 
                     broadcastToGame(clientGameId, {
-                        type: PacketType.PLAYER_STATE,
-                        odilId: clientOdilId,
-                        posX, posY, posZ,
-                        rotX, rotY, rotZ,
-                        velX, velY, velZ,
-                        animationId: player.animationId,
-                        isGrounded: player.isGrounded,
-                        isJumping: player.isJumping,
-                        isSprinting: player.isSprinting,
-                        isInWater: player.isInWater
+                        type: PacketType.PLAYER_STATE, odilId: clientOdilId,
+                        posX, posY, posZ, rotX, rotY, rotZ, velX, velY, velZ,
+                        animationId: player.animationId, isGrounded: player.isGrounded,
+                        isJumping: player.isJumping, isSprinting: player.isSprinting, isInWater: player.isInWater
                     }, clientOdilId);
                     break;
                 }
 
                 case PacketType.CHAT_MESSAGE: {
                     if (!clientGameId || !clientOdilId || !isConnected) break;
-
                     const message = (data.message || '').trim();
                     if (!message || message.length === 0) break;
-
-                    const safeMessage = censorText(message.substring(0, 256));
-                    const safeUsername = clientUsername || `Player${clientOdilId}`;
-                    
-                    console.log(`[Chat] ${safeUsername} (#${clientOdilId}): ${safeMessage}`);
-
                     broadcastToGame(clientGameId, {
-                        type: PacketType.CHAT_MESSAGE,
-                        odilId: clientOdilId,
-                        username: safeUsername,
-                        message: safeMessage
+                        type: PacketType.CHAT_MESSAGE, odilId: clientOdilId,
+                        username: clientUsername || `Player${clientOdilId}`, message: message.substring(0, 256)
                     }, clientOdilId);
                     break;
                 }
 
                 case PacketType.PING: {
-                    sendToClient(ws, {
-                        type: PacketType.PONG,
-                        clientTime: data.clientTime,
-                        serverTime: Date.now()
-                    });
+                    sendToClient(ws, { type: PacketType.PONG, clientTime: data.clientTime, serverTime: Date.now() });
                     break;
                 }
 
                 case PacketType.DISCONNECT: {
-                    console.log(`[WS] Disconnect request from ${clientUsername}`);
                     isConnected = false;
                     ws.close(1000, 'Client disconnect');
                     break;
                 }
-
-                default:
-                    break;
             }
         } catch (err) {
             console.error('[WS] Handle message error:', err);
@@ -622,7 +325,6 @@ wss.on('connection', (ws, req) => {
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message.toString());
-            
             if (data.type === PacketType.CONNECT_REQUEST) {
                 messageQueue.push(data);
                 processMessageQueue();
@@ -634,13 +336,10 @@ wss.on('connection', (ws, req) => {
         }
     });
 
-    ws.on('close', (code, reason) => {
-        console.log(`[WS] Closed: ${clientUsername} (#${clientOdilId}), code: ${code}`);
-
+    ws.on('close', () => {
         if (clientGameId && clientOdilId && isConnected) {
             removePlayerFromGame(clientGameId, clientOdilId);
         }
-        
         isConnected = false;
         messageQueue = [];
     });
@@ -650,41 +349,26 @@ wss.on('connection', (ws, req) => {
     });
 });
 
-// Ping clients
 const pingInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
-        if (ws.isAlive === false) {
-            console.log('[WS] Terminating dead connection');
-            return ws.terminate();
-        }
+        if (ws.isAlive === false) return ws.terminate();
         ws.isAlive = false;
         ws.ping();
     });
 }, 30000);
 
-wss.on('close', () => {
-    clearInterval(pingInterval);
-});
+wss.on('close', () => clearInterval(pingInterval));
 
-// Timeouts
 setInterval(() => {
     const now = Date.now();
-    
     gameServers.forEach((game, gameId) => {
         const toRemove = [];
-        
         game.players.forEach((player, odilId) => {
-            if (now - player.lastUpdate > 60000) {
-                console.log(`[WS] Timeout: ${player.username} in ${gameId}`);
-                toRemove.push(odilId);
-            }
+            if (now - player.lastUpdate > 60000) toRemove.push(odilId);
         });
-
         toRemove.forEach(odilId => {
             const player = game.players.get(odilId);
-            if (player && player.ws) {
-                player.ws.close(1000, 'Timeout');
-            }
+            if (player && player.ws) player.ws.close(1000, 'Timeout');
             removePlayerFromGame(gameId, odilId);
         });
     });
@@ -710,25 +394,23 @@ const counterSchema = new mongoose.Schema({
 const Counter = mongoose.model('Counter', counterSchema);
 
 async function getNextUserId() {
-    const counter = await Counter.findByIdAndUpdate(
-        'userId',
-        { $inc: { seq: 1 } },
-        { new: true, upsert: true }
-    );
+    const counter = await Counter.findByIdAndUpdate('userId', { $inc: { seq: 1 } }, { new: true, upsert: true });
+    return counter.seq;
+}
+
+async function getNextPostId() {
+    const counter = await Counter.findByIdAndUpdate('postId', { $inc: { seq: 1 } }, { new: true, upsert: true });
+    return counter.seq;
+}
+
+async function getNextReplyId() {
+    const counter = await Counter.findByIdAndUpdate('replyId', { $inc: { seq: 1 } }, { new: true, upsert: true });
     return counter.seq;
 }
 
 const userSchema = new mongoose.Schema({
     odilId: { type: Number, unique: true },
-    username: { 
-        type: String, 
-        required: true, 
-        unique: true, 
-        minlength: 3, 
-        maxlength: 20,
-        lowercase: true,
-        trim: true
-    },
+    username: { type: String, required: true, unique: true, minlength: 3, maxlength: 20, lowercase: true, trim: true },
     password: { type: String, required: true },
     createdAt: { type: Date, default: Date.now },
     lastLogin: { type: Date, default: Date.now },
@@ -738,7 +420,6 @@ const userSchema = new mongoose.Schema({
         playTime: { type: Number, default: 0 }
     }
 });
-
 const User = mongoose.model('User', userSchema);
 
 const gameSchema = new mongoose.Schema({
@@ -749,6 +430,7 @@ const gameSchema = new mongoose.Schema({
     creatorId: { type: Number },
     thumbnail: { type: String, default: '' },
     featured: { type: Boolean, default: false },
+    category: { type: String, default: 'other' },
     visits: { type: Number, default: 0 },
     activePlayers: { type: Number, default: 0 },
     maxPlayers: { type: Number, default: 50 },
@@ -756,7 +438,6 @@ const gameSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
 });
-
 const Game = mongoose.model('Game', gameSchema);
 
 const launchTokenSchema = new mongoose.Schema({
@@ -766,38 +447,36 @@ const launchTokenSchema = new mongoose.Schema({
     gameId: { type: String, required: true },
     createdAt: { type: Date, default: Date.now, expires: 300 }
 });
-
 const LaunchToken = mongoose.model('LaunchToken', launchTokenSchema);
 
-// ═══════════════════════════════════════════════════════════════
-// FORUM SCHEMA
-// ═══════════════════════════════════════════════════════════════
-
+// Forum schemas
 const forumPostSchema = new mongoose.Schema({
-    author: { type: String, required: true },
+    postId: { type: Number, unique: true },
     authorId: { type: Number, required: true },
-    content: { type: String, required: true, maxlength: 2000 },
-    category: { 
-        type: String, 
-        default: 'general',
-        enum: ['updates', 'general', 'offtopic']
-    },
-    isStaffPost: { type: Boolean, default: false },
+    authorName: { type: String, required: true },
+    title: { type: String, required: true, maxlength: 100 },
+    content: { type: String, required: true, maxlength: 5000 },
+    category: { type: String, default: 'general' },
+    likes: [{ type: Number }],
+    views: { type: Number, default: 0 },
+    replies: { type: Number, default: 0 },
     isPinned: { type: Boolean, default: false },
-    replies: [{
-        author: String,
-        authorId: Number,
-        content: String,
-        isStaffReply: Boolean,
-        createdAt: { type: Date, default: Date.now }
-    }],
+    isLocked: { type: Boolean, default: false },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+});
+const ForumPost = mongoose.model('ForumPost', forumPostSchema);
+
+const forumReplySchema = new mongoose.Schema({
+    replyId: { type: Number, unique: true },
+    postId: { type: Number, required: true },
+    authorId: { type: Number, required: true },
+    authorName: { type: String, required: true },
+    content: { type: String, required: true, maxlength: 2000 },
+    likes: [{ type: Number }],
     createdAt: { type: Date, default: Date.now }
 });
-
-forumPostSchema.index({ category: 1, createdAt: -1 });
-forumPostSchema.index({ isPinned: -1, createdAt: -1 });
-
-const ForumPost = mongoose.model('ForumPost', forumPostSchema);
+const ForumReply = mongoose.model('ForumReply', forumReplySchema);
 
 // ═══════════════════════════════════════════════════════════════
 // GAME BUILD DATA
@@ -805,22 +484,10 @@ const ForumPost = mongoose.model('ForumPost', forumPostSchema);
 
 const baseplateBuildData = {
     objects: [
-        {
-            type: 'cube',
-            position: { x: 0, y: -0.5, z: 0 },
-            scale: { x: 100, y: 1, z: 100 },
-            color: { r: 0.3, g: 0.8, b: 0.3 },
-            isStatic: true
-        },
+        { type: 'cube', position: { x: 0, y: -0.5, z: 0 }, scale: { x: 100, y: 1, z: 100 }, color: { r: 0.3, g: 0.8, b: 0.3 }, isStatic: true },
         { type: 'spawn', position: { x: 0, y: 2, z: 0 } }
     ],
-    settings: {
-        gravity: -20,
-        skyColor: { r: 0.53, g: 0.81, b: 0.92 },
-        ambientColor: { r: 0.4, g: 0.4, b: 0.5 },
-        fogEnabled: false,
-        spawnPoint: { x: 0, y: 2, z: 0 }
-    },
+    settings: { gravity: -20, skyColor: { r: 0.53, g: 0.81, b: 0.92 }, ambientColor: { r: 0.4, g: 0.4, b: 0.5 }, fogEnabled: false, spawnPoint: { x: 0, y: 2, z: 0 } },
     version: 1
 };
 
@@ -834,16 +501,9 @@ const obbyBuildData = {
         { type: 'cube', position: { x: 12, y: 6, z: 20 }, scale: { x: 3, y: 1, z: 3 }, color: { r: 0.2, g: 0.9, b: 0.2 }, isStatic: true },
         { type: 'cube', position: { x: 12, y: 8, z: 12 }, scale: { x: 3, y: 1, z: 3 }, color: { r: 0.2, g: 0.7, b: 0.9 }, isStatic: true },
         { type: 'cube', position: { x: 12, y: 10, z: 4 }, scale: { x: 3, y: 1, z: 3 }, color: { r: 0.5, g: 0.2, b: 0.9 }, isStatic: true },
-        { type: 'cube', position: { x: 12, y: 12, z: -4 }, scale: { x: 6, y: 1, z: 6 }, color: { r: 1.0, g: 0.84, b: 0.0 }, isStatic: true },
-        { type: 'cube', position: { x: 6, y: 0.2, z: 6 }, scale: { x: 3, y: 0.4, z: 3 }, color: { r: 1.0, g: 0.4, b: 0.7 }, isStatic: true, bounciness: 2.5 }
+        { type: 'cube', position: { x: 12, y: 12, z: -4 }, scale: { x: 6, y: 1, z: 6 }, color: { r: 1.0, g: 0.84, b: 0.0 }, isStatic: true }
     ],
-    settings: {
-        gravity: -25,
-        skyColor: { r: 0.4, g: 0.6, b: 0.9 },
-        ambientColor: { r: 0.5, g: 0.5, b: 0.6 },
-        fogEnabled: false,
-        spawnPoint: { x: 0, y: 2, z: 0 }
-    },
+    settings: { gravity: -25, skyColor: { r: 0.4, g: 0.6, b: 0.9 }, ambientColor: { r: 0.5, g: 0.5, b: 0.6 }, fogEnabled: false, spawnPoint: { x: 0, y: 2, z: 0 } },
     version: 1
 };
 
@@ -857,29 +517,12 @@ const hotelBuildData = {
         { type: 'cube', position: { x: 0, y: 5, z: -20 }, scale: { x: 30, y: 10, z: 0.5 }, color: { r: 0.85, g: 0.8, b: 0.7 }, isStatic: true },
         { type: 'cube', position: { x: -10, y: 5, z: 20 }, scale: { x: 10, y: 10, z: 0.5 }, color: { r: 0.85, g: 0.8, b: 0.7 }, isStatic: true },
         { type: 'cube', position: { x: 10, y: 5, z: 20 }, scale: { x: 10, y: 10, z: 0.5 }, color: { r: 0.85, g: 0.8, b: 0.7 }, isStatic: true },
-        { type: 'cube', position: { x: 0, y: 8.5, z: 20 }, scale: { x: 10, y: 3, z: 0.5 }, color: { r: 0.85, g: 0.8, b: 0.7 }, isStatic: true },
-        { type: 'cube', position: { x: -2.5, y: 3, z: 19.8 }, scale: { x: 2.5, y: 6, z: 0.2 }, color: { r: 0.3, g: 0.2, b: 0.15 }, isStatic: true },
-        { type: 'cube', position: { x: 2.5, y: 3, z: 19.8 }, scale: { x: 2.5, y: 6, z: 0.2 }, color: { r: 0.3, g: 0.2, b: 0.15 }, isStatic: true },
         { type: 'cube', position: { x: 0, y: 1.5, z: -15 }, scale: { x: 10, y: 3, z: 2 }, color: { r: 0.3, g: 0.2, b: 0.15 }, isStatic: true },
-        { type: 'cube', position: { x: 0, y: 3.1, z: -15 }, scale: { x: 10.2, y: 0.2, z: 2.2 }, color: { r: 0.85, g: 0.85, b: 0.8 }, isStatic: true },
         { type: 'cube', position: { x: -10, y: 0.8, z: 5 }, scale: { x: 5, y: 1.6, z: 2 }, color: { r: 0.2, g: 0.15, b: 0.4 }, isStatic: true },
         { type: 'cube', position: { x: 10, y: 0.8, z: 5 }, scale: { x: 5, y: 1.6, z: 2 }, color: { r: 0.2, g: 0.15, b: 0.4 }, isStatic: true },
-        { type: 'cube', position: { x: -10, y: 5, z: -8 }, scale: { x: 1.5, y: 10, z: 1.5 }, color: { r: 0.9, g: 0.85, b: 0.75 }, isStatic: true },
-        { type: 'cube', position: { x: 10, y: 5, z: -8 }, scale: { x: 1.5, y: 10, z: 1.5 }, color: { r: 0.9, g: 0.85, b: 0.75 }, isStatic: true },
-        { type: 'cube', position: { x: -10, y: 5, z: 12 }, scale: { x: 1.5, y: 10, z: 1.5 }, color: { r: 0.9, g: 0.85, b: 0.75 }, isStatic: true },
-        { type: 'cube', position: { x: 10, y: 5, z: 12 }, scale: { x: 1.5, y: 10, z: 1.5 }, color: { r: 0.9, g: 0.85, b: 0.75 }, isStatic: true },
-        { type: 'cube', position: { x: 0, y: 8.0, z: 0 }, scale: { x: 4, y: 0.3, z: 4 }, color: { r: 1.0, g: 0.9, b: 0.6 }, isStatic: true },
-        { type: 'point_light', position: { x: 0, y: 7.5, z: 0 }, color: { r: 1.0, g: 0.9, b: 0.7 }, intensity: 2.5, radius: 28 },
-        { type: 'spawn', position: { x: 0, y: 1.5, z: 10 } }
+        { type: 'spawn', position: { x: 0, y: 2, z: 15 } }
     ],
-    settings: {
-        gravity: -20,
-        timeOfDay: "night",
-        ambientColor: { r: 0.25, g: 0.22, b: 0.2 },
-        ambientIntensity: 0.8,
-        fogEnabled: false,
-        spawnPoint: { x: 0, y: 1.5, z: 10 }
-    },
+    settings: { gravity: -20, skyColor: { r: 0.1, g: 0.1, b: 0.15 }, ambientColor: { r: 0.6, g: 0.55, b: 0.5 }, fogEnabled: false, spawnPoint: { x: 0, y: 2, z: 15 } },
     version: 1
 };
 
@@ -890,53 +533,14 @@ const hotelBuildData = {
 mongoose.connect(process.env.MONGODB_URI)
     .then(async () => {
         console.log('MongoDB connected');
-        
-        try {
-            await mongoose.connection.collection('users').dropIndex('email_1');
-        } catch (e) {}
+        try { await mongoose.connection.collection('users').dropIndex('email_1'); } catch (e) {}
         
         await Game.deleteMany({});
-        console.log('Cleared old games');
-        
         const games = [
-            {
-                id: 'baseplate',
-                title: 'Baseplate',
-                description: 'A simple green baseplate. Perfect for hanging out with friends!',
-                creator: 'Today_Idk',
-                creatorId: 1,
-                thumbnail: '',
-                featured: true,
-                visits: 1,
-                maxPlayers: 50,
-                buildData: baseplateBuildData
-            },
-            {
-                id: 'obby',
-                title: 'Obby',
-                description: 'Jump through colorful platforms and reach the golden finish!',
-                creator: 'Today_Idk',
-                creatorId: 1,
-                thumbnail: '',
-                featured: true,
-                visits: 1,
-                maxPlayers: 30,
-                buildData: obbyBuildData
-            },
-            {
-                id: 'hotel',
-                title: 'Hotel',
-                description: 'A beautiful hotel lobby. Relax and meet new people!',
-                creator: 'Today_Idk',
-                creatorId: 1,
-                thumbnail: '',
-                featured: true,
-                visits: 1,
-                maxPlayers: 40,
-                buildData: hotelBuildData
-            }
+            { id: 'baseplate', title: 'Baseplate', description: 'A simple green baseplate. Perfect for hanging out with friends!', creator: 'Today_Idk', creatorId: 1, featured: true, category: 'sandbox', visits: 1, maxPlayers: 50, buildData: baseplateBuildData },
+            { id: 'obby', title: 'Obby', description: 'Jump through colorful platforms and reach the golden finish!', creator: 'Today_Idk', creatorId: 1, featured: true, category: 'obby', visits: 1, maxPlayers: 30, buildData: obbyBuildData },
+            { id: 'hotel', title: 'Hotel', description: 'A beautiful hotel lobby. Relax and meet new people!', creator: 'Today_Idk', creatorId: 1, featured: true, category: 'roleplay', visits: 1, maxPlayers: 40, buildData: hotelBuildData }
         ];
-        
         await Game.insertMany(games);
         console.log(`Created ${games.length} games`);
     })
@@ -950,15 +554,9 @@ const auth = async (req, res, next) => {
     try {
         const token = req.cookies.token;
         if (!token) return res.redirect('/auth');
-        
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const user = await User.findById(decoded.id).select('-password');
-        
-        if (!user) {
-            res.clearCookie('token');
-            return res.redirect('/auth');
-        }
-        
+        if (!user) { res.clearCookie('token'); return res.redirect('/auth'); }
         req.user = user;
         next();
     } catch (err) {
@@ -971,15 +569,9 @@ const authAPI = async (req, res, next) => {
     try {
         const token = req.cookies.token;
         if (!token) return res.status(401).json({ success: false, message: 'Not authorized' });
-        
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const user = await User.findById(decoded.id).select('-password');
-        
-        if (!user) {
-            res.clearCookie('token');
-            return res.status(401).json({ success: false, message: 'Not authorized' });
-        }
-        
+        if (!user) { res.clearCookie('token'); return res.status(401).json({ success: false, message: 'Not authorized' }); }
         req.user = user;
         next();
     } catch (err) {
@@ -995,108 +587,51 @@ const authAPI = async (req, res, next) => {
 app.get('/', (req, res) => {
     try {
         const token = req.cookies.token;
-        if (token && jwt.verify(token, process.env.JWT_SECRET)) {
-            return res.redirect('/home');
-        }
-    } catch (e) {
-        res.clearCookie('token');
-    }
+        if (token && jwt.verify(token, process.env.JWT_SECRET)) return res.redirect('/home');
+    } catch (e) { res.clearCookie('token'); }
     res.sendFile(path.join(__dirname, 'pages', 'landing.html'));
 });
 
 app.get('/auth', (req, res) => {
     try {
         const token = req.cookies.token;
-        if (token && jwt.verify(token, process.env.JWT_SECRET)) {
-            return res.redirect('/home');
-        }
-    } catch (e) {
-        res.clearCookie('token');
-    }
+        if (token && jwt.verify(token, process.env.JWT_SECRET)) return res.redirect('/home');
+    } catch (e) { res.clearCookie('token'); }
     res.sendFile(path.join(__dirname, 'pages', 'auth.html'));
 });
 
-app.get('/home', auth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'pages', 'home.html'));
-});
+app.get('/home', auth, (req, res) => res.sendFile(path.join(__dirname, 'pages', 'home.html')));
+app.get('/games', auth, (req, res) => res.sendFile(path.join(__dirname, 'pages', 'games.html')));
+app.get('/game/:id', auth, (req, res) => res.sendFile(path.join(__dirname, 'pages', 'game.html')));
+app.get('/users', (req, res) => res.sendFile(path.join(__dirname, 'pages', 'users.html')));
+app.get('/user/:id', (req, res) => res.sendFile(path.join(__dirname, 'pages', 'profile.html')));
 
-app.get('/games', auth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'pages', 'games.html'));
-});
-
-app.get('/game/:id', auth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'pages', 'game.html'));
-});
-
-app.get('/users', (req, res) => {
-    res.sendFile(path.join(__dirname, 'pages', 'users.html'));
-});
-
-app.get('/user/:id', (req, res) => {
-    res.sendFile(path.join(__dirname, 'pages', 'profile.html'));
-});
-
-// TuForums
-app.get('/TuForums', auth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'pages', 'forums.html'));
-});
-
-app.get('/TuForums/', auth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'pages', 'forums.html'));
-});
+// Forum pages
+app.get('/TuForums', (req, res) => res.sendFile(path.join(__dirname, 'pages', 'forum.html')));
+app.get('/TuForums/:ownerId', (req, res) => res.sendFile(path.join(__dirname, 'pages', 'forum-user.html')));
+app.get('/TuForums/:ownerId/:postId', (req, res) => res.sendFile(path.join(__dirname, 'pages', 'forum-post.html')));
 
 // ═══════════════════════════════════════════════════════════════
 // API - USER
 // ═══════════════════════════════════════════════════════════════
 
 app.get('/api/user', authAPI, (req, res) => {
-    res.json({
-        success: true,
-        user: {
-            id: req.user._id,
-            odilId: req.user.odilId,
-            username: req.user.username,
-            createdAt: req.user.createdAt,
-            gameData: req.user.gameData
-        }
-    });
+    res.json({ success: true, user: { id: req.user._id, odilId: req.user.odilId, username: req.user.username, createdAt: req.user.createdAt, gameData: req.user.gameData } });
 });
 
 app.get('/api/users', async (req, res) => {
     try {
-        const users = await User.find()
-            .select('odilId username gameData createdAt')
-            .sort({ createdAt: -1 })
-            .limit(100);
-        
+        const users = await User.find().select('odilId username gameData createdAt').sort({ createdAt: -1 }).limit(100);
         res.json({ success: true, users });
-    } catch (err) {
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
+    } catch (err) { res.status(500).json({ success: false, message: 'Server error' }); }
 });
 
 app.get('/api/user/:id', async (req, res) => {
     try {
-        const { id } = req.params;
-        const user = await User.findOne({ odilId: parseInt(id) })
-            .select('odilId username gameData createdAt');
-
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
-
+        const user = await User.findOne({ odilId: parseInt(req.params.id) }).select('odilId username gameData createdAt');
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
         res.json({ success: true, user });
-    } catch (err) {
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
-});
-
-app.get('/api/version', (req, res) => {
-    res.json({
-        version: "0.3",
-        downloadUrl: "https://tublox.onrender.com/download/TuClient.zip",
-        message: "Patch 0.3"
-    });
+    } catch (err) { res.status(500).json({ success: false, message: 'Server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1106,50 +641,26 @@ app.get('/api/version', (req, res) => {
 app.post('/api/register', async (req, res) => {
     try {
         const { username, password } = req.body;
-
-        if (!username || !password) {
-            return res.status(400).json({ success: false, message: 'All fields required' });
-        }
-
-        const validation = validateUsername(username);
-        if (!validation.valid) {
-            return res.status(400).json({ success: false, message: validation.error });
-        }
-
+        if (!username || !password) return res.status(400).json({ success: false, message: 'All fields required' });
+        
         const cleanUsername = username.toLowerCase().trim();
-
-        if (password.length < 6) {
-            return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
-        }
+        if (cleanUsername.length < 3 || cleanUsername.length > 20) return res.status(400).json({ success: false, message: 'Username must be 3-20 characters' });
+        if (!/^[a-z0-9_]+$/.test(cleanUsername)) return res.status(400).json({ success: false, message: 'Username can only contain letters, numbers and underscore' });
+        if (password.length < 6) return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
 
         const exists = await User.findOne({ username: cleanUsername });
-        if (exists) {
-            return res.status(400).json({ success: false, message: 'Username already taken' });
-        }
+        if (exists) return res.status(400).json({ success: false, message: 'Username already taken' });
 
         const odilId = await getNextUserId();
         const hash = await bcrypt.hash(password, 12);
-        
-        const user = new User({ 
-            username: cleanUsername, 
-            password: hash,
-            odilId: odilId
-        });
+        const user = new User({ username: cleanUsername, password: hash, odilId });
         await user.save();
 
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-        res.cookie('token', token, { 
-            httpOnly: true, 
-            maxAge: 7 * 24 * 60 * 60 * 1000, 
-            sameSite: 'strict' 
-        });
-        
-        console.log(`[Register] New user: ${cleanUsername} (#${odilId})`);
-        
+        res.cookie('token', token, { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'strict' });
         res.json({ success: true, odilId });
-
     } catch (err) {
-        console.error('[Register] Error:', err);
+        console.error(err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
@@ -1157,37 +668,23 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', async (req, res) => {
     try {
         const { username, password } = req.body;
-
-        if (!username || !password) {
-            return res.status(400).json({ success: false, message: 'All fields required' });
-        }
+        if (!username || !password) return res.status(400).json({ success: false, message: 'All fields required' });
 
         const cleanUsername = username.toLowerCase().trim();
         const user = await User.findOne({ username: cleanUsername });
-        
-        if (!user) {
-            return res.status(400).json({ success: false, message: 'Invalid username or password' });
-        }
+        if (!user) return res.status(400).json({ success: false, message: 'Invalid username or password' });
 
         const valid = await bcrypt.compare(password, user.password);
-        if (!valid) {
-            return res.status(400).json({ success: false, message: 'Invalid username or password' });
-        }
+        if (!valid) return res.status(400).json({ success: false, message: 'Invalid username or password' });
 
         user.lastLogin = new Date();
         await user.save();
 
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-        res.cookie('token', token, { 
-            httpOnly: true, 
-            maxAge: 7 * 24 * 60 * 60 * 1000, 
-            sameSite: 'strict' 
-        });
-        
+        res.cookie('token', token, { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'strict' });
         res.json({ success: true });
-
     } catch (err) {
-        console.error('[Login] Error:', err);
+        console.error(err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
@@ -1203,20 +700,28 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/games', async (req, res) => {
     try {
-        const { featured, limit } = req.query;
+        const { featured, category, page = 1, limit = 3 } = req.query;
+        const pageNum = Math.max(1, parseInt(page) || 1);
+        const limitNum = Math.min(12, Math.max(1, parseInt(limit) || 3));
+        const skip = (pageNum - 1) * limitNum;
         
         let query = {};
-        if (featured === 'true') {
-            query.featured = true;
-        }
+        if (featured === 'true') query.featured = true;
+        if (category && category !== 'all') query.category = category;
         
-        const games = await Game.find(query)
-            .select('-buildData')
-            .sort({ featured: -1, visits: -1 })
-            .limit(parseInt(limit) || 50);
+        const totalGames = await Game.countDocuments(query);
+        const totalPages = Math.ceil(totalGames / limitNum);
         
-        res.json({ success: true, games });
+        const games = await Game.find(query).select('-buildData').sort({ featured: -1, visits: -1 }).skip(skip).limit(limitNum);
+        
+        const gamesWithPlayers = games.map(g => {
+            const gameServer = gameServers.get(g.id);
+            return { ...g.toObject(), activePlayers: gameServer ? gameServer.players.size : 0 };
+        });
+        
+        res.json({ success: true, games: gamesWithPlayers, pagination: { currentPage: pageNum, totalPages, totalGames, gamesPerPage: limitNum, hasNextPage: pageNum < totalPages, hasPrevPage: pageNum > 1 } });
     } catch (err) {
+        console.error('[API] Games error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
@@ -1224,137 +729,54 @@ app.get('/api/games', async (req, res) => {
 app.get('/api/game/:id', async (req, res) => {
     try {
         const game = await Game.findOne({ id: req.params.id }).select('-buildData');
-        
-        if (!game) {
-            return res.status(404).json({ success: false, message: 'Game not found' });
-        }
-        
-        res.json({ success: true, game });
-    } catch (err) {
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
+        if (!game) return res.status(404).json({ success: false, message: 'Game not found' });
+        const gameServer = gameServers.get(req.params.id);
+        res.json({ success: true, game: { ...game.toObject(), activePlayers: gameServer ? gameServer.players.size : 0 } });
+    } catch (err) { res.status(500).json({ success: false, message: 'Server error' }); }
 });
 
 app.get('/api/game/:id/servers', async (req, res) => {
     try {
-        const gameId = req.params.id;
-        const game = gameServers.get(gameId);
-        
-        if (!game || game.players.size === 0) {
-            return res.json({ success: true, servers: [], message: 'No active servers' });
-        }
-
+        const game = gameServers.get(req.params.id);
+        if (!game || game.players.size === 0) return res.json({ success: true, servers: [] });
         const hostPlayer = game.players.get(game.hostOdilId);
-        
-        res.json({
-            success: true,
-            servers: [{
-                id: gameId,
-                name: `${hostPlayer?.username || 'Unknown'}'s Server`,
-                players: game.players.size,
-                maxPlayers: 50,
-                hostOdilId: game.hostOdilId,
-                hostUsername: hostPlayer?.username || 'Unknown'
-            }]
-        });
-    } catch (err) {
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
+        res.json({ success: true, servers: [{ id: req.params.id, name: `${hostPlayer?.username || 'Unknown'}'s Server`, players: game.players.size, maxPlayers: 50, hostOdilId: game.hostOdilId }] });
+    } catch (err) { res.status(500).json({ success: false, message: 'Server error' }); }
 });
-
-// ═══════════════════════════════════════════════════════════════
-// API - GAME LAUNCH
-// ═══════════════════════════════════════════════════════════════
 
 app.post('/api/game/launch', authAPI, async (req, res) => {
     try {
         const { gameId } = req.body;
-        const user = req.user;
-        
-        if (!gameId) {
-            return res.json({ success: false, message: 'Game ID required' });
-        }
-        
         const game = await Game.findOne({ id: gameId });
+        if (!game) return res.status(404).json({ success: false, message: 'Game not found' });
         
-        if (!game) {
-            return res.json({ success: false, message: 'Game not found' });
-        }
+        game.visits += 1;
+        await game.save();
         
-        const token = crypto.randomBytes(32).toString('hex');
+        const launchToken = crypto.randomBytes(32).toString('hex');
+        await LaunchToken.create({ token: launchToken, odilId: req.user.odilId, username: req.user.username, gameId: game.id });
         
-        await LaunchToken.create({
-            token: token,
-            odilId: user.odilId,
-            username: user.username,
-            gameId: gameId
-        });
-        
-        await Game.findOneAndUpdate({ id: gameId }, { $inc: { visits: 1 } });
-        
-        console.log(`[Launch] ${user.username} (#${user.odilId}) -> ${gameId}`);
-        
-        res.json({
-            success: true,
-            token: token,
-            wsHost: process.env.WS_HOST || 'tublox.onrender.com',
-            wsPort: parseInt(process.env.WS_PORT) || 443,
-            gameId: gameId,
-            gameName: game.title || 'TuBlox World',
-            creatorName: game.creator || '',
-            description: game.description || '',
-            maxPlayers: game.maxPlayers || 50,
-            thumbnail: game.thumbnail || ''
-        });
-        
-    } catch (e) {
-        console.error('[Launch] Error:', e);
-        res.json({ success: false, message: 'Server error' });
+        const wsHost = process.env.RENDER_EXTERNAL_HOSTNAME || process.env.WS_HOST || 'tublox.onrender.com';
+        res.json({ success: true, token: launchToken, wsHost, wsPort: 443, gameId: game.id });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
 app.get('/api/game/validate/:token', async (req, res) => {
     try {
-        const { token } = req.params;
+        const launchData = await LaunchToken.findOne({ token: req.params.token });
+        if (!launchData) return res.status(404).json({ success: false, message: 'Invalid or expired token' });
         
-        if (!token) {
-            return res.json({ success: false, message: 'Token required' });
-        }
+        const game = await Game.findOne({ id: launchData.gameId });
+        await LaunchToken.deleteOne({ token: req.params.token });
         
-        const session = await LaunchToken.findOne({ token: token });
-        
-        if (!session) {
-            return res.json({ success: false, message: 'Invalid or expired token' });
-        }
-        
-        const game = await Game.findOne({ id: session.gameId });
-        const user = await User.findOne({ odilId: session.odilId });
-        
-        if (!user) {
-            return res.json({ success: false, message: 'User not found' });
-        }
-        
-        console.log(`[Validate] ${user.username} (#${user.odilId}) -> ${session.gameId}`);
-        
-        await LaunchToken.deleteOne({ token: token });
-        
-        res.json({
-            success: true,
-            username: user.username,
-            odilId: user.odilId,
-            gameId: session.gameId,
-            gameName: game?.title || 'TuBlox World',
-            creatorName: game?.creator || '',
-            description: game?.description || '',
-            maxPlayers: game?.maxPlayers || 50,
-            wsHost: process.env.WS_HOST || 'tublox.onrender.com',
-            wsPort: parseInt(process.env.WS_PORT) || 443,
-            buildData: game?.buildData || null
-        });
-        
-    } catch (e) {
-        console.error('[Validate] Error:', e);
-        res.json({ success: false, message: 'Server error' });
+        const wsHost = process.env.RENDER_EXTERNAL_HOSTNAME || process.env.WS_HOST || 'tublox.onrender.com';
+        res.json({ success: true, odilId: launchData.odilId, username: launchData.username, gameId: launchData.gameId, wsHost, wsPort: 443, buildData: game?.buildData || baseplateBuildData });
+    } catch (err) {
+        console.error('[Validate] Error:', err);
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
@@ -1362,305 +784,185 @@ app.get('/api/game/validate/:token', async (req, res) => {
 // API - FORUM
 // ═══════════════════════════════════════════════════════════════
 
-// Get forum stats
-app.get('/api/forum/stats', async (req, res) => {
-    try {
-        const stats = await ForumPost.aggregate([
-            {
-                $group: {
-                    _id: '$category',
-                    threads: { $sum: 1 },
-                    posts: { $sum: { $add: [1, { $size: '$replies' }] } }
-                }
-            }
-        ]);
-        
-        const totalPosts = await ForumPost.countDocuments();
-        const totalReplies = await ForumPost.aggregate([
-            { $project: { replyCount: { $size: '$replies' } } },
-            { $group: { _id: null, total: { $sum: '$replyCount' } } }
-        ]);
-        
-        const categoryStats = {};
-        stats.forEach(s => {
-            categoryStats[s._id] = { threads: s.threads, posts: s.posts };
-        });
-        
-        res.json({
-            success: true,
-            total: {
-                posts: totalPosts,
-                replies: totalReplies[0]?.total || 0
-            },
-            categories: categoryStats
-        });
-    } catch (err) {
-        console.error('[Forum] Stats error:', err);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
+const FORUM_CATEGORIES = [
+    { id: 'general', name: 'General', description: 'General discussion' },
+    { id: 'games', name: 'Games', description: 'Talk about games' },
+    { id: 'creations', name: 'Creations', description: 'Share your creations' },
+    { id: 'help', name: 'Help', description: 'Get help from community' },
+    { id: 'suggestions', name: 'Suggestions', description: 'Suggest new features' },
+    { id: 'offtopic', name: 'Off-Topic', description: 'Random discussions' }
+];
+
+app.get('/api/forum/categories', (req, res) => {
+    res.json({ success: true, categories: FORUM_CATEGORIES });
 });
 
-// Get recent activity
-app.get('/api/forum/recent', async (req, res) => {
+app.get('/api/forum/posts', async (req, res) => {
     try {
-        const recentPosts = await ForumPost.find()
-            .sort({ createdAt: -1 })
-            .limit(15)
-            .select('author authorId content category createdAt replies')
-            .lean();
+        const { page = 1, limit = 15, category, sort = 'newest', search } = req.query;
+        const pageNum = Math.max(1, parseInt(page) || 1);
+        const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 15));
+        const skip = (pageNum - 1) * limitNum;
         
-        // Also include posts with recent replies
-        const postsWithRecentReplies = await ForumPost.aggregate([
-            { $unwind: '$replies' },
-            { $sort: { 'replies.createdAt': -1 } },
-            { $limit: 15 },
-            {
-                $project: {
-                    author: '$replies.author',
-                    authorId: '$replies.authorId',
-                    content: '$replies.content',
-                    category: 1,
-                    createdAt: '$replies.createdAt',
-                    isReply: { $literal: true },
-                    originalPostId: '$_id',
-                    originalContent: '$content'
-                }
-            }
-        ]);
+        let query = {};
+        if (category && category !== 'all') query.category = category;
+        if (search) query.$or = [{ title: { $regex: search, $options: 'i' } }, { content: { $regex: search, $options: 'i' } }];
         
-        // Merge and sort
-        const allActivity = [
-            ...recentPosts.map(p => ({ ...p, isReply: false })),
-            ...postsWithRecentReplies
-        ]
-            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-            .slice(0, 15);
-        
-        res.json({ success: true, activity: allActivity });
-    } catch (err) {
-        console.error('[Forum] Recent error:', err);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
-});
-
-// Get posts by category
-app.get('/api/forum/posts', authAPI, async (req, res) => {
-    try {
-        const { category, page = 1, limit = 20 } = req.query;
-        const filter = {};
-        
-        if (category && category !== 'all') {
-            filter.category = category;
+        let sortOption = { isPinned: -1 };
+        switch (sort) {
+            case 'newest': sortOption.createdAt = -1; break;
+            case 'oldest': sortOption.createdAt = 1; break;
+            case 'popular': sortOption.views = -1; break;
+            case 'mostliked': sortOption = { isPinned: -1, likes: -1 }; break;
+            case 'mostreplies': sortOption.replies = -1; break;
+            default: sortOption.createdAt = -1;
         }
         
-        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const totalPosts = await ForumPost.countDocuments(query);
+        const totalPages = Math.ceil(totalPosts / limitNum);
+        const posts = await ForumPost.find(query).sort(sortOption).skip(skip).limit(limitNum).lean();
         
-        const posts = await ForumPost.find(filter)
-            .sort({ isPinned: -1, createdAt: -1 })
-            .skip(skip)
-            .limit(parseInt(limit))
-            .lean();
-        
-        const total = await ForumPost.countDocuments(filter);
-        
-        res.json({ 
-            success: true, 
-            posts,
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total,
-                pages: Math.ceil(total / parseInt(limit))
-            }
-        });
+        res.json({ success: true, posts, pagination: { currentPage: pageNum, totalPages, totalPosts, hasNextPage: pageNum < totalPages, hasPrevPage: pageNum > 1 } });
     } catch (err) {
         console.error('[Forum] Get posts error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
-// Get single post
-app.get('/api/forum/posts/:postId', authAPI, async (req, res) => {
+app.get('/api/forum/user/:ownerId/posts', async (req, res) => {
     try {
-        const post = await ForumPost.findById(req.params.postId).lean();
+        const { page = 1, limit = 15 } = req.query;
+        const pageNum = Math.max(1, parseInt(page) || 1);
+        const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 15));
+        const skip = (pageNum - 1) * limitNum;
+        const authorId = parseInt(req.params.ownerId);
         
-        if (!post) {
-            return res.status(404).json({ success: false, message: 'Post not found' });
-        }
+        const user = await User.findOne({ odilId: authorId }).select('username odilId');
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
         
-        res.json({ success: true, post });
+        const totalPosts = await ForumPost.countDocuments({ authorId });
+        const totalPages = Math.ceil(totalPosts / limitNum);
+        const posts = await ForumPost.find({ authorId }).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean();
+        
+        res.json({ success: true, user: { username: user.username, odilId: user.odilId }, posts, pagination: { currentPage: pageNum, totalPages, totalPosts, hasNextPage: pageNum < totalPages, hasPrevPage: pageNum > 1 } });
+    } catch (err) {
+        console.error('[Forum] Get user posts error:', err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+app.get('/api/forum/post/:ownerId/:postId', async (req, res) => {
+    try {
+        const post = await ForumPost.findOne({ postId: parseInt(req.params.postId), authorId: parseInt(req.params.ownerId) });
+        if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+        
+        post.views += 1;
+        await post.save();
+        
+        const replies = await ForumReply.find({ postId: post.postId }).sort({ createdAt: 1 }).lean();
+        res.json({ success: true, post, replies });
     } catch (err) {
         console.error('[Forum] Get post error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
-// Create post
 app.post('/api/forum/posts', authAPI, async (req, res) => {
     try {
-        const { content, category } = req.body;
+        const { title, content, category } = req.body;
+        if (!title || !content) return res.status(400).json({ success: false, message: 'Title and content required' });
+        if (title.length > 100) return res.status(400).json({ success: false, message: 'Title too long (max 100)' });
+        if (content.length > 5000) return res.status(400).json({ success: false, message: 'Content too long (max 5000)' });
         
-        if (!content || content.trim().length === 0) {
-            return res.status(400).json({ success: false, message: 'Content required' });
-        }
+        const validCategory = FORUM_CATEGORIES.find(c => c.id === category);
+        const postId = await getNextPostId();
         
-        if (content.length > 2000) {
-            return res.status(400).json({ success: false, message: 'Content too long' });
-        }
-        
-        const isStaff = isStaffUser(req.user.username);
-        
-        // Only staff can post in updates
-        if (category === 'updates' && !isStaff) {
-            return res.status(403).json({ success: false, message: 'Staff only' });
-        }
-        
-        const censoredContent = censorText(content.trim());
-        
-        const post = new ForumPost({
-            author: req.user.username,
-            authorId: req.user.odilId,
-            content: censoredContent,
-            category: category || 'general',
-            isStaffPost: isStaff
-        });
-        
+        const post = new ForumPost({ postId, authorId: req.user.odilId, authorName: req.user.username, title: title.trim(), content: content.trim(), category: validCategory ? category : 'general' });
         await post.save();
         
-        console.log(`[Forum] New post by ${req.user.username} in ${category}`);
-        
-        res.json({ success: true, post: post.toObject() });
+        res.json({ success: true, post, url: `/TuForums/${req.user.odilId}/${postId}` });
     } catch (err) {
         console.error('[Forum] Create post error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
-// Reply to post
-app.post('/api/forum/posts/:postId/reply', authAPI, async (req, res) => {
+app.post('/api/forum/post/:postId/reply', authAPI, async (req, res) => {
     try {
-        const { postId } = req.params;
         const { content } = req.body;
+        if (!content || content.trim().length === 0) return res.status(400).json({ success: false, message: 'Content required' });
+        if (content.length > 2000) return res.status(400).json({ success: false, message: 'Reply too long (max 2000)' });
         
-        if (!content || content.trim().length === 0) {
-            return res.status(400).json({ success: false, message: 'Content required' });
-        }
+        const post = await ForumPost.findOne({ postId: parseInt(req.params.postId) });
+        if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+        if (post.isLocked) return res.status(403).json({ success: false, message: 'Post is locked' });
         
-        if (content.length > 1000) {
-            return res.status(400).json({ success: false, message: 'Reply too long' });
-        }
+        const replyId = await getNextReplyId();
+        const reply = new ForumReply({ replyId, postId: post.postId, authorId: req.user.odilId, authorName: req.user.username, content: content.trim() });
+        await reply.save();
         
-        const censoredContent = censorText(content.trim());
-        const isStaff = isStaffUser(req.user.username);
+        post.replies += 1;
+        post.updatedAt = new Date();
+        await post.save();
         
-        const reply = {
-            author: req.user.username,
-            authorId: req.user.odilId,
-            content: censoredContent,
-            isStaffReply: isStaff,
-            createdAt: new Date()
-        };
-        
-        const updatedPost = await ForumPost.findByIdAndUpdate(
-            postId,
-            { $push: { replies: reply } },
-            { new: true }
-        ).lean();
-        
-        if (!updatedPost) {
-            return res.status(404).json({ success: false, message: 'Post not found' });
-        }
-        
-        console.log(`[Forum] Reply by ${req.user.username} on ${postId}`);
-        
-        res.json({ success: true, post: updatedPost });
+        res.json({ success: true, reply });
     } catch (err) {
-        console.error('[Forum] Reply error:', err);
+        console.error('[Forum] Create reply error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
-// Delete post
-app.delete('/api/forum/posts/:postId', authAPI, async (req, res) => {
+app.post('/api/forum/post/:postId/like', authAPI, async (req, res) => {
     try {
-        const { postId } = req.params;
+        const post = await ForumPost.findOne({ postId: parseInt(req.params.postId) });
+        if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
         
-        const post = await ForumPost.findById(postId);
-        if (!post) {
-            return res.status(404).json({ success: false, message: 'Post not found' });
-        }
+        const userId = req.user.odilId;
+        const hasLiked = post.likes.includes(userId);
         
-        const isStaff = isStaffUser(req.user.username);
-        const isAuthor = post.authorId === req.user.odilId;
+        if (hasLiked) post.likes = post.likes.filter(id => id !== userId);
+        else post.likes.push(userId);
         
-        if (!isStaff && !isAuthor) {
-            return res.status(403).json({ success: false, message: 'Not authorized' });
-        }
+        await post.save();
+        res.json({ success: true, liked: !hasLiked, likesCount: post.likes.length });
+    } catch (err) {
+        console.error('[Forum] Like post error:', err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+app.post('/api/forum/reply/:replyId/like', authAPI, async (req, res) => {
+    try {
+        const reply = await ForumReply.findOne({ replyId: parseInt(req.params.replyId) });
+        if (!reply) return res.status(404).json({ success: false, message: 'Reply not found' });
         
-        await ForumPost.findByIdAndDelete(postId);
+        const userId = req.user.odilId;
+        const hasLiked = reply.likes.includes(userId);
         
-        console.log(`[Forum] Post ${postId} deleted by ${req.user.username}`);
+        if (hasLiked) reply.likes = reply.likes.filter(id => id !== userId);
+        else reply.likes.push(userId);
+        
+        await reply.save();
+        res.json({ success: true, liked: !hasLiked, likesCount: reply.likes.length });
+    } catch (err) {
+        console.error('[Forum] Like reply error:', err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+app.delete('/api/forum/post/:postId', authAPI, async (req, res) => {
+    try {
+        const post = await ForumPost.findOne({ postId: parseInt(req.params.postId) });
+        if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+        if (post.authorId !== req.user.odilId) return res.status(403).json({ success: false, message: 'Not authorized' });
+        
+        await ForumReply.deleteMany({ postId: post.postId });
+        await post.deleteOne();
         
         res.json({ success: true });
     } catch (err) {
-        console.error('[Forum] Delete error:', err);
+        console.error('[Forum] Delete post error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
-    }
-});
-
-// Pin post (staff only)
-app.post('/api/forum/posts/:postId/pin', authAPI, async (req, res) => {
-    try {
-        if (!isStaffUser(req.user.username)) {
-            return res.status(403).json({ success: false, message: 'Staff only' });
-        }
-        
-        const post = await ForumPost.findById(req.params.postId);
-        if (!post) {
-            return res.status(404).json({ success: false, message: 'Post not found' });
-        }
-        
-        post.isPinned = !post.isPinned;
-        await post.save();
-        
-        console.log(`[Forum] Post ${req.params.postId} ${post.isPinned ? 'pinned' : 'unpinned'}`);
-        
-        res.json({ success: true, isPinned: post.isPinned });
-    } catch (err) {
-        console.error('[Forum] Pin error:', err);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
-});
-
-// ═══════════════════════════════════════════════════════════════
-// API - ADMIN
-// ═══════════════════════════════════════════════════════════════
-
-app.post('/api/admin/delete-user', async (req, res) => {
-    try {
-        const { username, adminKey } = req.body;
-        
-        if (adminKey !== 'ASFLSDHJKL@#$YH%(*DSHGJDSH$@#(*%YKSFDJHGJKSDH#@($DHSGKjds') {
-            return res.status(403).json({ success: false, message: 'Forbidden' });
-        }
-        
-        if (!username) {
-            return res.json({ success: false, message: 'Username required' });
-        }
-        
-        const user = await User.findOneAndDelete({ username: username.toLowerCase() });
-        
-        if (!user) {
-            return res.json({ success: false, message: 'User not found' });
-        }
-        
-        console.log(`[Admin] Deleted user: ${user.username} (#${user.odilId})`);
-        
-        res.json({ success: true, message: `Deleted ${user.username} (#${user.odilId})` });
-        
-    } catch (e) {
-        console.error('[Admin] Delete error:', e);
-        res.json({ success: false, message: 'Server error' });
     }
 });
 
@@ -1670,11 +972,7 @@ app.post('/api/admin/delete-user', async (req, res) => {
 
 app.get('/download/TuBloxSetup.exe', (req, res) => {
     const filePath = path.join(__dirname, 'public', 'download', 'TuBloxSetup.exe');
-    
-    if (!fs.existsSync(filePath)) {
-        return res.status(404).send('File not found');
-    }
-    
+    if (!fs.existsSync(filePath)) return res.status(404).send('File not found');
     res.download(filePath, 'TuBloxSetup.exe');
 });
 
@@ -1686,5 +984,4 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`WebSocket path: /ws`);
-    console.log(`TuForums: /TuForums`);
 });

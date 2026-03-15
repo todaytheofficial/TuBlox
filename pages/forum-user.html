@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TuBlox — User Posts</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/forum.css">
+</head>
+<body>
+    <nav class="navbar" id="main-navbar">
+        <div class="navbar-inner">
+            <a href="/" class="logo">
+                <img src="/img/logo.svg" alt="TuBlox">
+                <span>TuBlox</span>
+            </a>
+            <div class="nav-links">
+                <a href="/home">Home</a>
+                <a href="/games">Games</a>
+                <a href="/TuForums" class="active">Forums</a>
+                <a href="/users">Players</a>
+            </div>
+            <div class="nav-right">
+                <div class="user-menu">
+                    <span class="username">Loading...</span>
+                    <button class="btn btn-ghost" id="logout-btn">Logout</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="forum-page">
+        <div class="forum-user-header" id="user-header">
+            <div class="loading">Loading...</div>
+        </div>
+
+        <div class="forum-container">
+            <main class="forum-main full-width">
+                <div class="posts-list" id="posts-list">
+                    <div class="loading">Loading posts...</div>
+                </div>
+
+                <div class="forum-pagination" id="pagination"></div>
+            </main>
+        </div>
+    </div>
+
+    <script src="/js/main.js"></script>
+    <script src="/js/forum.js"></script>
+</body>
+</html>

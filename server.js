@@ -20,8 +20,7 @@ const server = http.createServer(app);
 // ═══════════════════════════════════════════════════════════════
 
 const BANNED_WORDS = [
-    // English profanity
-    'fuck', 'fucking', 'fucker', 'fucked', 'fuk', 'fck', 'fuk', 'phuck',
+    'fuck', 'fucking', 'fucker', 'fucked', 'fuk', 'fck', 'phuck',
     'shit', 'shitting', 'shitty', 'crap', 'bullshit',
     'bitch', 'bitching', 'bastard', 'whore', 'slut', 'hoe',
     'ass', 'asshole', 'arse', 'arsehole', 'butt', 'butthole',
@@ -39,18 +38,14 @@ const BANNED_WORDS = [
     'bomb', 'bombing', 'attack', 'shooter', 'shooting',
     'drug', 'drugs', 'cocaine', 'heroin', 'meth', 'weed', 'marijuana',
     'crack', 'lsd', 'ecstasy', 'molly', 'pills',
-    
-    // System/Admin words
     'admin', 'administrator', 'moderator', 'mod', 'staff', 'owner',
     'official', 'tublox', 'system', 'support', 'help', 'bot',
     'server', 'console', 'root', 'superuser', 'sysadmin',
-    
-    // Russian profanity
     'хуй', 'хуя', 'хуи', 'хую', 'хуё', 'хуе', 'хер', 'хрен',
     'пизд', 'пизде', 'пизду', 'пиздец', 'пиздюк', 'писюн',
     'ебл', 'ебал', 'ебать', 'ебу', 'ебёт', 'ебет', 'ебля', 'еби',
     'ебан', 'ебануть', 'ебанутый', 'ебаный', 'наебать', 'проебать',
-    'блят', 'блядь', 'бляд', 'блять', 'блять', 'бля',
+    'блят', 'блядь', 'бляд', 'блять', 'бля',
     'сука', 'суки', 'суку', 'сучка', 'сучий',
     'член', 'члена', 'члену', 'членом',
     'жопа', 'жопу', 'жопой', 'жопе', 'жоп',
@@ -96,9 +91,6 @@ const DOMAIN_PATTERNS = [
 // ═══════════════════════════════════════════════════════════════
 // STAFF USERS
 // ═══════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════
-// TUFORUMS - STAFF
-// ═══════════════════════════════════════════════════════════════
 
 const STAFF_USERNAMES = ['today_idk'];
 
@@ -107,10 +99,8 @@ function isStaffUser(username) {
     return STAFF_USERNAMES.includes(username.toLowerCase());
 }
 
-
-
 // ═══════════════════════════════════════════════════════════════
-// VALIDATION & CENSORSHIP FUNCTIONS
+// VALIDATION & CENSORSHIP
 // ═══════════════════════════════════════════════════════════════
 
 function validateUsername(username) {
@@ -239,8 +229,7 @@ app.get('/api/health', (req, res) => {
         status: 'ok', 
         uptime: process.uptime(),
         games: gameServers.size,
-        connections: connectedClients.size,
-        forumClients: forumClients.size
+        connections: connectedClients.size
     });
 });
 
@@ -255,9 +244,7 @@ const wss = new WebSocket.Server({
 
 const gameServers = new Map();
 const connectedClients = new Map();
-const forumClients = new Set();
 
-// Game Packet Types
 const PacketType = {
     CONNECT_REQUEST: 1,
     CONNECT_RESPONSE: 2,
@@ -277,23 +264,6 @@ const PacketType = {
     HOST_ASSIGN: 50,
     BUILD_DATA: 51,
     SERVER_INFO: 52
-};
-
-// Forum Packet Types
-const ForumPacketType = {
-    FORUM_CONNECT: 100,
-    FORUM_DISCONNECT: 101,
-    FORUM_GET_POSTS: 102,
-    FORUM_POSTS_LIST: 103,
-    FORUM_NEW_POST: 104,
-    FORUM_POST_CREATED: 105,
-    FORUM_NEW_REPLY: 106,
-    FORUM_POST_UPDATED: 107,
-    FORUM_LIKE_POST: 108,
-    FORUM_DELETE_POST: 109,
-    FORUM_POST_DELETED: 110,
-    FORUM_PIN_POST: 111,
-    FORUM_ERROR: 199
 };
 
 function sendToClient(ws, data) {
@@ -334,19 +304,6 @@ function broadcastToGame(gameId, data, excludeOdilId = null) {
     });
     
     return sentCount;
-}
-
-function broadcastToForum(data, excludeWs = null) {
-    const message = JSON.stringify(data);
-    forumClients.forEach(client => {
-        if (client !== excludeWs && client.readyState === WebSocket.OPEN) {
-            try {
-                client.send(message);
-            } catch (err) {
-                console.error('[Forum] Broadcast error:', err.message);
-            }
-        }
-    });
 }
 
 function getOrCreateGameServer(gameId) {
@@ -406,10 +363,6 @@ function removePlayerFromGame(gameId, odilId) {
     console.log(`[WS] ${gameId} now has ${game.players.size} players`);
 }
 
-// ═══════════════════════════════════════════════════════════════
-// WEBSOCKET CONNECTION HANDLER
-// ═══════════════════════════════════════════════════════════════
-
 wss.on('connection', (ws, req) => {
     let clientOdilId = null;
     let clientGameId = null;
@@ -422,9 +375,6 @@ wss.on('connection', (ws, req) => {
     console.log(`[WS] New connection from ${clientIp}`);
 
     ws.isAlive = true;
-    ws.isForumClient = false;
-    ws.forumUser = null;
-    
     ws.on('pong', () => { ws.isAlive = true; });
 
     async function processMessageQueue() {
@@ -442,19 +392,6 @@ wss.on('connection', (ws, req) => {
 
     async function handleMessage(data) {
         try {
-            // ═══════════════════════════════════════════════════════════
-            // FORUM PACKETS (100-199)
-            // ═══════════════════════════════════════════════════════════
-            
-            if (data.type >= 100 && data.type < 200) {
-                await handleForumMessage(data);
-                return;
-            }
-            
-            // ═══════════════════════════════════════════════════════════
-            // GAME PACKETS
-            // ═══════════════════════════════════════════════════════════
-            
             switch (data.type) {
                 case PacketType.CONNECT_REQUEST: {
                     if (!data.odilId || typeof data.odilId !== 'number') {
@@ -639,14 +576,10 @@ wss.on('connection', (ws, req) => {
                 }
 
                 case PacketType.CHAT_MESSAGE: {
-                    if (!clientGameId || !clientOdilId || !isConnected) {
-                        break;
-                    }
+                    if (!clientGameId || !clientOdilId || !isConnected) break;
 
                     const message = (data.message || '').trim();
-                    if (!message || message.length === 0) {
-                        break;
-                    }
+                    if (!message || message.length === 0) break;
 
                     const safeMessage = censorText(message.substring(0, 256));
                     const safeUsername = clientUsername || `Player${clientOdilId}`;
@@ -686,278 +619,6 @@ wss.on('connection', (ws, req) => {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // FORUM MESSAGE HANDLER
-    // ═══════════════════════════════════════════════════════════════
-    
-    async function handleForumMessage(data) {
-        try {
-            switch (data.type) {
-                case ForumPacketType.FORUM_CONNECT: {
-                    forumClients.add(ws);
-                    ws.isForumClient = true;
-                    ws.forumUser = {
-                        odilId: data.odilId,
-                        username: data.username
-                    };
-                    console.log(`[Forum] Client connected: ${data.username} (#${data.odilId}). Total: ${forumClients.size}`);
-                    break;
-                }
-                
-                case ForumPacketType.FORUM_DISCONNECT: {
-                    forumClients.delete(ws);
-                    ws.isForumClient = false;
-                    ws.forumUser = null;
-                    console.log(`[Forum] Client disconnected. Total: ${forumClients.size}`);
-                    break;
-                }
-                
-                case ForumPacketType.FORUM_GET_POSTS: {
-                    try {
-                        const filter = {};
-                        if (data.category && data.category !== 'all') {
-                            filter.category = data.category;
-                        }
-                        
-                        const posts = await ForumPost.find(filter)
-                            .sort({ isPinned: -1, createdAt: -1 })
-                            .limit(50)
-                            .lean();
-                        
-                        sendToClient(ws, {
-                            type: ForumPacketType.FORUM_POSTS_LIST,
-                            posts: posts
-                        });
-                    } catch (err) {
-                        console.error('[Forum] Get posts error:', err);
-                        sendToClient(ws, { 
-                            type: ForumPacketType.FORUM_ERROR, 
-                            message: 'Failed to load posts' 
-                        });
-                    }
-                    break;
-                }
-                
-                case ForumPacketType.FORUM_NEW_POST: {
-                    if (!ws.forumUser) {
-                        sendToClient(ws, { 
-                            type: ForumPacketType.FORUM_ERROR, 
-                            message: 'Not authenticated' 
-                        });
-                        break;
-                    }
-                    
-                    const content = (data.content || '').trim();
-                    if (!content || content.length === 0) {
-                        sendToClient(ws, { 
-                            type: ForumPacketType.FORUM_ERROR, 
-                            message: 'Content required' 
-                        });
-                        break;
-                    }
-                    
-                    if (content.length > 2000) {
-                        sendToClient(ws, { 
-                            type: ForumPacketType.FORUM_ERROR, 
-                            message: 'Content too long (max 2000)' 
-                        });
-                        break;
-                    }
-                    
-                    try {
-                        const isStaff = isStaffUser(ws.forumUser.username);
-                        const censoredContent = censorText(content);
-                        
-                        const post = new ForumPost({
-                            author: ws.forumUser.username,
-                            authorId: ws.forumUser.odilId,
-                            content: censoredContent,
-                            category: data.category || 'general',
-                            isStaffPost: isStaff && data.isStaffPost === true,
-                            isPinned: isStaff && data.isPinned === true
-                        });
-                        
-                        await post.save();
-                        
-                        const savedPost = post.toObject();
-                        
-                        broadcastToForum({
-                            type: ForumPacketType.FORUM_POST_CREATED,
-                            post: savedPost
-                        });
-                        
-                        console.log(`[Forum] New post by ${ws.forumUser.username}: "${censoredContent.substring(0, 50)}..."`);
-                    } catch (err) {
-                        console.error('[Forum] Create post error:', err);
-                        sendToClient(ws, { 
-                            type: ForumPacketType.FORUM_ERROR, 
-                            message: 'Failed to create post' 
-                        });
-                    }
-                    break;
-                }
-                
-                case ForumPacketType.FORUM_NEW_REPLY: {
-                    if (!ws.forumUser) {
-                        sendToClient(ws, { 
-                            type: ForumPacketType.FORUM_ERROR, 
-                            message: 'Not authenticated' 
-                        });
-                        break;
-                    }
-                    
-                    const replyContent = (data.content || '').trim();
-                    if (!replyContent || !data.postId) {
-                        sendToClient(ws, { 
-                            type: ForumPacketType.FORUM_ERROR, 
-                            message: 'Content and postId required' 
-                        });
-                        break;
-                    }
-                    
-                    if (replyContent.length > 1000) {
-                        sendToClient(ws, { 
-                            type: ForumPacketType.FORUM_ERROR, 
-                            message: 'Reply too long (max 1000)' 
-                        });
-                        break;
-                    }
-                    
-                    try {
-                        const censoredReply = censorText(replyContent);
-                        const isStaff = isStaffUser(ws.forumUser.username);
-                        
-                        const reply = {
-                            author: ws.forumUser.username,
-                            authorId: ws.forumUser.odilId,
-                            content: censoredReply,
-                            isStaffReply: isStaff,
-                            createdAt: new Date()
-                        };
-                        
-                        const updatedPost = await ForumPost.findByIdAndUpdate(
-                            data.postId,
-                            { $push: { replies: reply } },
-                            { new: true }
-                        ).lean();
-                        
-                        if (updatedPost) {
-                            broadcastToForum({
-                                type: ForumPacketType.FORUM_POST_UPDATED,
-                                post: updatedPost
-                            });
-                            console.log(`[Forum] Reply by ${ws.forumUser.username} on post ${data.postId}`);
-                        }
-                    } catch (err) {
-                        console.error('[Forum] Reply error:', err);
-                        sendToClient(ws, { 
-                            type: ForumPacketType.FORUM_ERROR, 
-                            message: 'Failed to add reply' 
-                        });
-                    }
-                    break;
-                }
-                
-                case ForumPacketType.FORUM_LIKE_POST: {
-                    if (!ws.forumUser || !data.postId) break;
-                    
-                    try {
-                        const post = await ForumPost.findById(data.postId);
-                        if (!post) break;
-                        
-                        const odilId = ws.forumUser.odilId;
-                        const likeIndex = post.likes.indexOf(odilId);
-                        
-                        if (likeIndex === -1) {
-                            post.likes.push(odilId);
-                        } else {
-                            post.likes.splice(likeIndex, 1);
-                        }
-                        
-                        await post.save();
-                        
-                        broadcastToForum({
-                            type: ForumPacketType.FORUM_POST_UPDATED,
-                            post: post.toObject()
-                        });
-                    } catch (err) {
-                        console.error('[Forum] Like error:', err);
-                    }
-                    break;
-                }
-                
-                case ForumPacketType.FORUM_DELETE_POST: {
-                    if (!ws.forumUser || !data.postId) break;
-                    
-                    try {
-                        const post = await ForumPost.findById(data.postId);
-                        if (!post) break;
-                        
-                        const isStaff = isStaffUser(ws.forumUser.username);
-                        const isAuthor = post.authorId === ws.forumUser.odilId;
-                        
-                        if (!isStaff && !isAuthor) {
-                            sendToClient(ws, { 
-                                type: ForumPacketType.FORUM_ERROR, 
-                                message: 'Not authorized to delete' 
-                            });
-                            break;
-                        }
-                        
-                        await ForumPost.findByIdAndDelete(data.postId);
-                        
-                        broadcastToForum({
-                            type: ForumPacketType.FORUM_POST_DELETED,
-                            postId: data.postId
-                        });
-                        
-                        console.log(`[Forum] Post ${data.postId} deleted by ${ws.forumUser.username}`);
-                    } catch (err) {
-                        console.error('[Forum] Delete error:', err);
-                    }
-                    break;
-                }
-                
-                case ForumPacketType.FORUM_PIN_POST: {
-                    if (!ws.forumUser || !data.postId) break;
-                    
-                    const isStaff = isStaffUser(ws.forumUser.username);
-                    if (!isStaff) {
-                        sendToClient(ws, { 
-                            type: ForumPacketType.FORUM_ERROR, 
-                            message: 'Staff only' 
-                        });
-                        break;
-                    }
-                    
-                    try {
-                        const post = await ForumPost.findById(data.postId);
-                        if (!post) break;
-                        
-                        post.isPinned = !post.isPinned;
-                        await post.save();
-                        
-                        broadcastToForum({
-                            type: ForumPacketType.FORUM_POST_UPDATED,
-                            post: post.toObject()
-                        });
-                        
-                        console.log(`[Forum] Post ${data.postId} ${post.isPinned ? 'pinned' : 'unpinned'} by ${ws.forumUser.username}`);
-                    } catch (err) {
-                        console.error('[Forum] Pin error:', err);
-                    }
-                    break;
-                }
-            }
-        } catch (err) {
-            console.error('[Forum] Handle message error:', err);
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // MESSAGE LISTENER
-    // ═══════════════════════════════════════════════════════════════
-
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message.toString());
@@ -974,15 +635,10 @@ wss.on('connection', (ws, req) => {
     });
 
     ws.on('close', (code, reason) => {
-        console.log(`[WS] Closed: ${clientUsername || 'unknown'} (#${clientOdilId || '?'}), code: ${code}`);
+        console.log(`[WS] Closed: ${clientUsername} (#${clientOdilId}), code: ${code}`);
 
         if (clientGameId && clientOdilId && isConnected) {
             removePlayerFromGame(clientGameId, clientOdilId);
-        }
-        
-        if (ws.isForumClient) {
-            forumClients.delete(ws);
-            console.log(`[Forum] Client removed on close. Total: ${forumClients.size}`);
         }
         
         isConnected = false;
@@ -1116,9 +772,6 @@ const LaunchToken = mongoose.model('LaunchToken', launchTokenSchema);
 // ═══════════════════════════════════════════════════════════════
 // FORUM SCHEMA
 // ═══════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════
-// TUFORUMS - SCHEMA
-// ═══════════════════════════════════════════════════════════════
 
 const forumPostSchema = new mongoose.Schema({
     author: { type: String, required: true },
@@ -1159,10 +812,7 @@ const baseplateBuildData = {
             color: { r: 0.3, g: 0.8, b: 0.3 },
             isStatic: true
         },
-        {
-            type: 'spawn',
-            position: { x: 0, y: 2, z: 0 }
-        }
+        { type: 'spawn', position: { x: 0, y: 2, z: 0 } }
     ],
     settings: {
         gravity: -20,
@@ -1176,71 +826,16 @@ const baseplateBuildData = {
 
 const obbyBuildData = {
     objects: [
-        {
-            type: 'cube',
-            position: { x: 0, y: 0, z: 0 },
-            scale: { x: 8, y: 1, z: 8 },
-            color: { r: 0.2, g: 0.6, b: 0.2 },
-            isStatic: true
-        },
+        { type: 'cube', position: { x: 0, y: 0, z: 0 }, scale: { x: 8, y: 1, z: 8 }, color: { r: 0.2, g: 0.6, b: 0.2 }, isStatic: true },
         { type: 'spawn', position: { x: 0, y: 2, z: 0 } },
-        {
-            type: 'cube',
-            position: { x: 0, y: 0, z: 12 },
-            scale: { x: 4, y: 1, z: 4 },
-            color: { r: 0.9, g: 0.3, b: 0.3 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 0, y: 2, z: 20 },
-            scale: { x: 4, y: 1, z: 4 },
-            color: { r: 0.9, g: 0.6, b: 0.2 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 6, y: 4, z: 20 },
-            scale: { x: 3, y: 1, z: 3 },
-            color: { r: 0.9, g: 0.9, b: 0.2 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 12, y: 6, z: 20 },
-            scale: { x: 3, y: 1, z: 3 },
-            color: { r: 0.2, g: 0.9, b: 0.2 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 12, y: 8, z: 12 },
-            scale: { x: 3, y: 1, z: 3 },
-            color: { r: 0.2, g: 0.7, b: 0.9 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 12, y: 10, z: 4 },
-            scale: { x: 3, y: 1, z: 3 },
-            color: { r: 0.5, g: 0.2, b: 0.9 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 12, y: 12, z: -4 },
-            scale: { x: 6, y: 1, z: 6 },
-            color: { r: 1.0, g: 0.84, b: 0.0 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 6, y: 0.2, z: 6 },
-            scale: { x: 3, y: 0.4, z: 3 },
-            color: { r: 1.0, g: 0.4, b: 0.7 },
-            isStatic: true,
-            bounciness: 2.5
-        }
+        { type: 'cube', position: { x: 0, y: 0, z: 12 }, scale: { x: 4, y: 1, z: 4 }, color: { r: 0.9, g: 0.3, b: 0.3 }, isStatic: true },
+        { type: 'cube', position: { x: 0, y: 2, z: 20 }, scale: { x: 4, y: 1, z: 4 }, color: { r: 0.9, g: 0.6, b: 0.2 }, isStatic: true },
+        { type: 'cube', position: { x: 6, y: 4, z: 20 }, scale: { x: 3, y: 1, z: 3 }, color: { r: 0.9, g: 0.9, b: 0.2 }, isStatic: true },
+        { type: 'cube', position: { x: 12, y: 6, z: 20 }, scale: { x: 3, y: 1, z: 3 }, color: { r: 0.2, g: 0.9, b: 0.2 }, isStatic: true },
+        { type: 'cube', position: { x: 12, y: 8, z: 12 }, scale: { x: 3, y: 1, z: 3 }, color: { r: 0.2, g: 0.7, b: 0.9 }, isStatic: true },
+        { type: 'cube', position: { x: 12, y: 10, z: 4 }, scale: { x: 3, y: 1, z: 3 }, color: { r: 0.5, g: 0.2, b: 0.9 }, isStatic: true },
+        { type: 'cube', position: { x: 12, y: 12, z: -4 }, scale: { x: 6, y: 1, z: 6 }, color: { r: 1.0, g: 0.84, b: 0.0 }, isStatic: true },
+        { type: 'cube', position: { x: 6, y: 0.2, z: 6 }, scale: { x: 3, y: 0.4, z: 3 }, color: { r: 1.0, g: 0.4, b: 0.7 }, isStatic: true, bounciness: 2.5 }
     ],
     settings: {
         gravity: -25,
@@ -1254,153 +849,27 @@ const obbyBuildData = {
 
 const hotelBuildData = {
     objects: [
-        {
-            type: 'cube',
-            position: { x: 0, y: 0, z: 0 },
-            scale: { x: 30, y: 0.5, z: 40 },
-            color: { r: 0.15, g: 0.1, b: 0.08 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 0, y: 0.26, z: 0 },
-            scale: { x: 12, y: 0.02, z: 20 },
-            color: { r: 0.6, g: 0.1, b: 0.15 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 0, y: 10, z: 0 },
-            scale: { x: 30, y: 0.5, z: 40 },
-            color: { r: 0.95, g: 0.93, b: 0.88 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: -15, y: 5, z: 0 },
-            scale: { x: 0.5, y: 10, z: 40 },
-            color: { r: 0.85, g: 0.8, b: 0.7 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 15, y: 5, z: 0 },
-            scale: { x: 0.5, y: 10, z: 40 },
-            color: { r: 0.85, g: 0.8, b: 0.7 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 0, y: 5, z: -20 },
-            scale: { x: 30, y: 10, z: 0.5 },
-            color: { r: 0.85, g: 0.8, b: 0.7 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: -10, y: 5, z: 20 },
-            scale: { x: 10, y: 10, z: 0.5 },
-            color: { r: 0.85, g: 0.8, b: 0.7 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 10, y: 5, z: 20 },
-            scale: { x: 10, y: 10, z: 0.5 },
-            color: { r: 0.85, g: 0.8, b: 0.7 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 0, y: 8.5, z: 20 },
-            scale: { x: 10, y: 3, z: 0.5 },
-            color: { r: 0.85, g: 0.8, b: 0.7 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: -2.5, y: 3, z: 19.8 },
-            scale: { x: 2.5, y: 6, z: 0.2 },
-            color: { r: 0.3, g: 0.2, b: 0.15 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 2.5, y: 3, z: 19.8 },
-            scale: { x: 2.5, y: 6, z: 0.2 },
-            color: { r: 0.3, g: 0.2, b: 0.15 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 0, y: 1.5, z: -15 },
-            scale: { x: 10, y: 3, z: 2 },
-            color: { r: 0.3, g: 0.2, b: 0.15 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 0, y: 3.1, z: -15 },
-            scale: { x: 10.2, y: 0.2, z: 2.2 },
-            color: { r: 0.85, g: 0.85, b: 0.8 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: -10, y: 0.8, z: 5 },
-            scale: { x: 5, y: 1.6, z: 2 },
-            color: { r: 0.2, g: 0.15, b: 0.4 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 10, y: 0.8, z: 5 },
-            scale: { x: 5, y: 1.6, z: 2 },
-            color: { r: 0.2, g: 0.15, b: 0.4 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: -10, y: 5, z: -8 },
-            scale: { x: 1.5, y: 10, z: 1.5 },
-            color: { r: 0.9, g: 0.85, b: 0.75 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 10, y: 5, z: -8 },
-            scale: { x: 1.5, y: 10, z: 1.5 },
-            color: { r: 0.9, g: 0.85, b: 0.75 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: -10, y: 5, z: 12 },
-            scale: { x: 1.5, y: 10, z: 1.5 },
-            color: { r: 0.9, g: 0.85, b: 0.75 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 10, y: 5, z: 12 },
-            scale: { x: 1.5, y: 10, z: 1.5 },
-            color: { r: 0.9, g: 0.85, b: 0.75 },
-            isStatic: true
-        },
-        {
-            type: 'cube',
-            position: { x: 0, y: 8.0, z: 0 },
-            scale: { x: 4, y: 0.3, z: 4 },
-            color: { r: 1.0, g: 0.9, b: 0.6 },
-            isStatic: true
-        },
-        {
-            type: 'point_light',
-            position: { x: 0, y: 7.5, z: 0 },
-            color: { r: 1.0, g: 0.9, b: 0.7 },
-            intensity: 2.5,
-            radius: 28
-        },
+        { type: 'cube', position: { x: 0, y: 0, z: 0 }, scale: { x: 30, y: 0.5, z: 40 }, color: { r: 0.15, g: 0.1, b: 0.08 }, isStatic: true },
+        { type: 'cube', position: { x: 0, y: 0.26, z: 0 }, scale: { x: 12, y: 0.02, z: 20 }, color: { r: 0.6, g: 0.1, b: 0.15 }, isStatic: true },
+        { type: 'cube', position: { x: 0, y: 10, z: 0 }, scale: { x: 30, y: 0.5, z: 40 }, color: { r: 0.95, g: 0.93, b: 0.88 }, isStatic: true },
+        { type: 'cube', position: { x: -15, y: 5, z: 0 }, scale: { x: 0.5, y: 10, z: 40 }, color: { r: 0.85, g: 0.8, b: 0.7 }, isStatic: true },
+        { type: 'cube', position: { x: 15, y: 5, z: 0 }, scale: { x: 0.5, y: 10, z: 40 }, color: { r: 0.85, g: 0.8, b: 0.7 }, isStatic: true },
+        { type: 'cube', position: { x: 0, y: 5, z: -20 }, scale: { x: 30, y: 10, z: 0.5 }, color: { r: 0.85, g: 0.8, b: 0.7 }, isStatic: true },
+        { type: 'cube', position: { x: -10, y: 5, z: 20 }, scale: { x: 10, y: 10, z: 0.5 }, color: { r: 0.85, g: 0.8, b: 0.7 }, isStatic: true },
+        { type: 'cube', position: { x: 10, y: 5, z: 20 }, scale: { x: 10, y: 10, z: 0.5 }, color: { r: 0.85, g: 0.8, b: 0.7 }, isStatic: true },
+        { type: 'cube', position: { x: 0, y: 8.5, z: 20 }, scale: { x: 10, y: 3, z: 0.5 }, color: { r: 0.85, g: 0.8, b: 0.7 }, isStatic: true },
+        { type: 'cube', position: { x: -2.5, y: 3, z: 19.8 }, scale: { x: 2.5, y: 6, z: 0.2 }, color: { r: 0.3, g: 0.2, b: 0.15 }, isStatic: true },
+        { type: 'cube', position: { x: 2.5, y: 3, z: 19.8 }, scale: { x: 2.5, y: 6, z: 0.2 }, color: { r: 0.3, g: 0.2, b: 0.15 }, isStatic: true },
+        { type: 'cube', position: { x: 0, y: 1.5, z: -15 }, scale: { x: 10, y: 3, z: 2 }, color: { r: 0.3, g: 0.2, b: 0.15 }, isStatic: true },
+        { type: 'cube', position: { x: 0, y: 3.1, z: -15 }, scale: { x: 10.2, y: 0.2, z: 2.2 }, color: { r: 0.85, g: 0.85, b: 0.8 }, isStatic: true },
+        { type: 'cube', position: { x: -10, y: 0.8, z: 5 }, scale: { x: 5, y: 1.6, z: 2 }, color: { r: 0.2, g: 0.15, b: 0.4 }, isStatic: true },
+        { type: 'cube', position: { x: 10, y: 0.8, z: 5 }, scale: { x: 5, y: 1.6, z: 2 }, color: { r: 0.2, g: 0.15, b: 0.4 }, isStatic: true },
+        { type: 'cube', position: { x: -10, y: 5, z: -8 }, scale: { x: 1.5, y: 10, z: 1.5 }, color: { r: 0.9, g: 0.85, b: 0.75 }, isStatic: true },
+        { type: 'cube', position: { x: 10, y: 5, z: -8 }, scale: { x: 1.5, y: 10, z: 1.5 }, color: { r: 0.9, g: 0.85, b: 0.75 }, isStatic: true },
+        { type: 'cube', position: { x: -10, y: 5, z: 12 }, scale: { x: 1.5, y: 10, z: 1.5 }, color: { r: 0.9, g: 0.85, b: 0.75 }, isStatic: true },
+        { type: 'cube', position: { x: 10, y: 5, z: 12 }, scale: { x: 1.5, y: 10, z: 1.5 }, color: { r: 0.9, g: 0.85, b: 0.75 }, isStatic: true },
+        { type: 'cube', position: { x: 0, y: 8.0, z: 0 }, scale: { x: 4, y: 0.3, z: 4 }, color: { r: 1.0, g: 0.9, b: 0.6 }, isStatic: true },
+        { type: 'point_light', position: { x: 0, y: 7.5, z: 0 }, color: { r: 1.0, g: 0.9, b: 0.7 }, intensity: 2.5, radius: 28 },
         { type: 'spawn', position: { x: 0, y: 1.5, z: 10 } }
     ],
     settings: {
@@ -1438,7 +907,6 @@ mongoose.connect(process.env.MONGODB_URI)
                 creatorId: 1,
                 thumbnail: '',
                 featured: true,
-                category: 'sandbox',
                 visits: 1,
                 maxPlayers: 50,
                 buildData: baseplateBuildData
@@ -1446,12 +914,11 @@ mongoose.connect(process.env.MONGODB_URI)
             {
                 id: 'obby',
                 title: 'Obby',
-                description: 'Jump through colorful platforms and reach the golden finish! Can you complete it?',
+                description: 'Jump through colorful platforms and reach the golden finish!',
                 creator: 'Today_Idk',
                 creatorId: 1,
                 thumbnail: '',
                 featured: true,
-                category: 'obby',
                 visits: 1,
                 maxPlayers: 30,
                 buildData: obbyBuildData
@@ -1459,12 +926,11 @@ mongoose.connect(process.env.MONGODB_URI)
             {
                 id: 'hotel',
                 title: 'Hotel',
-                description: 'A beautiful hotel lobby. Relax on the sofas and meet new people!',
+                description: 'A beautiful hotel lobby. Relax and meet new people!',
                 creator: 'Today_Idk',
                 creatorId: 1,
                 thumbnail: '',
                 featured: true,
-                category: 'roleplay',
                 visits: 1,
                 maxPlayers: 40,
                 buildData: hotelBuildData
@@ -1570,10 +1036,7 @@ app.get('/user/:id', (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'profile.html'));
 });
 
-// ═══════════════════════════════════════════════════════════════
-// TUFORUMS PAGE
-// ═══════════════════════════════════════════════════════════════
-
+// TuForums
 app.get('/TuForums', auth, (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'forums.html'));
 });
@@ -1581,7 +1044,6 @@ app.get('/TuForums', auth, (req, res) => {
 app.get('/TuForums/', auth, (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'forums.html'));
 });
-
 
 // ═══════════════════════════════════════════════════════════════
 // API - USER
@@ -1631,9 +1093,9 @@ app.get('/api/user/:id', async (req, res) => {
 
 app.get('/api/version', (req, res) => {
     res.json({
-        version: "0.4",
+        version: "0.3",
         downloadUrl: "https://tublox.onrender.com/download/TuClient.zip",
-        message: "Patch 0.4"
+        message: "Patch 0.3"
     });
 });
 
@@ -1651,10 +1113,7 @@ app.post('/api/register', async (req, res) => {
 
         const validation = validateUsername(username);
         if (!validation.valid) {
-            return res.status(400).json({ 
-                success: false, 
-                message: validation.error 
-            });
+            return res.status(400).json({ success: false, message: validation.error });
         }
 
         const cleanUsername = username.toLowerCase().trim();
@@ -1782,11 +1241,7 @@ app.get('/api/game/:id/servers', async (req, res) => {
         const game = gameServers.get(gameId);
         
         if (!game || game.players.size === 0) {
-            return res.json({ 
-                success: true, 
-                servers: [],
-                message: 'No active servers'
-            });
+            return res.json({ success: true, servers: [], message: 'No active servers' });
         }
 
         const hostPlayer = game.players.get(game.hostOdilId);
@@ -1835,10 +1290,7 @@ app.post('/api/game/launch', authAPI, async (req, res) => {
             gameId: gameId
         });
         
-        await Game.findOneAndUpdate(
-            { id: gameId },
-            { $inc: { visits: 1 } }
-        );
+        await Game.findOneAndUpdate({ id: gameId }, { $inc: { visits: 1 } });
         
         console.log(`[Launch] ${user.username} (#${user.odilId}) -> ${gameId}`);
         
@@ -1867,7 +1319,7 @@ app.get('/api/game/validate/:token', async (req, res) => {
         
         if (!token) {
             return res.json({ success: false, message: 'Token required' });
-                }
+        }
         
         const session = await LaunchToken.findOne({ token: token });
         
@@ -1907,8 +1359,9 @@ app.get('/api/game/validate/:token', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// API - FORUM (HTTP FALLBACK)
+// API - FORUM
 // ═══════════════════════════════════════════════════════════════
+
 // Get forum stats
 app.get('/api/forum/stats', async (req, res) => {
     try {
@@ -1942,6 +1395,50 @@ app.get('/api/forum/stats', async (req, res) => {
             categories: categoryStats
         });
     } catch (err) {
+        console.error('[Forum] Stats error:', err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// Get recent activity
+app.get('/api/forum/recent', async (req, res) => {
+    try {
+        const recentPosts = await ForumPost.find()
+            .sort({ createdAt: -1 })
+            .limit(15)
+            .select('author authorId content category createdAt replies')
+            .lean();
+        
+        // Also include posts with recent replies
+        const postsWithRecentReplies = await ForumPost.aggregate([
+            { $unwind: '$replies' },
+            { $sort: { 'replies.createdAt': -1 } },
+            { $limit: 15 },
+            {
+                $project: {
+                    author: '$replies.author',
+                    authorId: '$replies.authorId',
+                    content: '$replies.content',
+                    category: 1,
+                    createdAt: '$replies.createdAt',
+                    isReply: { $literal: true },
+                    originalPostId: '$_id',
+                    originalContent: '$content'
+                }
+            }
+        ]);
+        
+        // Merge and sort
+        const allActivity = [
+            ...recentPosts.map(p => ({ ...p, isReply: false })),
+            ...postsWithRecentReplies
+        ]
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 15);
+        
+        res.json({ success: true, activity: allActivity });
+    } catch (err) {
+        console.error('[Forum] Recent error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
@@ -1977,11 +1474,12 @@ app.get('/api/forum/posts', authAPI, async (req, res) => {
             }
         });
     } catch (err) {
+        console.error('[Forum] Get posts error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
-// Get single post with replies
+// Get single post
 app.get('/api/forum/posts/:postId', authAPI, async (req, res) => {
     try {
         const post = await ForumPost.findById(req.params.postId).lean();
@@ -1992,48 +1490,7 @@ app.get('/api/forum/posts/:postId', authAPI, async (req, res) => {
         
         res.json({ success: true, post });
     } catch (err) {
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
-});
-
-// Get recent activity
-app.get('/api/forum/recent', async (req, res) => {
-    try {
-        const recentPosts = await ForumPost.find()
-            .sort({ createdAt: -1 })
-            .limit(15)
-            .select('author authorId content category createdAt replies')
-            .lean();
-        
-        // Также включаем посты с недавними реплаями
-        const postsWithRecentReplies = await ForumPost.aggregate([
-            { $unwind: '$replies' },
-            { $sort: { 'replies.createdAt': -1 } },
-            { $limit: 15 },
-            {
-                $project: {
-                    author: '$replies.author',
-                    authorId: '$replies.authorId',
-                    content: '$replies.content',
-                    category: 1,
-                    createdAt: '$replies.createdAt',
-                    isReply: { $literal: true },
-                    originalPostId: '$_id',
-                    originalContent: '$content'
-                }
-            }
-        ]);
-        
-        // Объединяем и сортируем
-        const allActivity = [...recentPosts.map(p => ({
-            ...p,
-            isReply: false
-        })), ...postsWithRecentReplies]
-            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-            .slice(0, 15);
-        
-        res.json({ success: true, activity: allActivity });
-    } catch (err) {
+        console.error('[Forum] Get post error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
@@ -2070,8 +1527,11 @@ app.post('/api/forum/posts', authAPI, async (req, res) => {
         
         await post.save();
         
+        console.log(`[Forum] New post by ${req.user.username} in ${category}`);
+        
         res.json({ success: true, post: post.toObject() });
     } catch (err) {
+        console.error('[Forum] Create post error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
@@ -2111,8 +1571,11 @@ app.post('/api/forum/posts/:postId/reply', authAPI, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Post not found' });
         }
         
+        console.log(`[Forum] Reply by ${req.user.username} on ${postId}`);
+        
         res.json({ success: true, post: updatedPost });
     } catch (err) {
+        console.error('[Forum] Reply error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
@@ -2136,8 +1599,11 @@ app.delete('/api/forum/posts/:postId', authAPI, async (req, res) => {
         
         await ForumPost.findByIdAndDelete(postId);
         
+        console.log(`[Forum] Post ${postId} deleted by ${req.user.username}`);
+        
         res.json({ success: true });
     } catch (err) {
+        console.error('[Forum] Delete error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
@@ -2157,11 +1623,15 @@ app.post('/api/forum/posts/:postId/pin', authAPI, async (req, res) => {
         post.isPinned = !post.isPinned;
         await post.save();
         
+        console.log(`[Forum] Post ${req.params.postId} ${post.isPinned ? 'pinned' : 'unpinned'}`);
+        
         res.json({ success: true, isPinned: post.isPinned });
     } catch (err) {
+        console.error('[Forum] Pin error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
+
 // ═══════════════════════════════════════════════════════════════
 // API - ADMIN
 // ═══════════════════════════════════════════════════════════════
@@ -2186,10 +1656,7 @@ app.post('/api/admin/delete-user', async (req, res) => {
         
         console.log(`[Admin] Deleted user: ${user.username} (#${user.odilId})`);
         
-        res.json({ 
-            success: true, 
-            message: `Deleted ${user.username} (#${user.odilId})` 
-        });
+        res.json({ success: true, message: `Deleted ${user.username} (#${user.odilId})` });
         
     } catch (e) {
         console.error('[Admin] Delete error:', e);

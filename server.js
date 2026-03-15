@@ -966,6 +966,14 @@ app.delete('/api/forum/post/:postId', authAPI, async (req, res) => {
     }
 });
 
+app.get('/api/version', (req, res) => {
+    res.json({
+        version: "0.4",
+        downloadUrl: "https://tublox.onrender.com/download/TuClient.zip",
+        message: "Patch 0.4"
+    });
+});
+
 // ═══════════════════════════════════════════════════════════════
 // DOWNLOADS
 // ═══════════════════════════════════════════════════════════════
@@ -974,6 +982,12 @@ app.get('/download/TuBloxSetup.exe', (req, res) => {
     const filePath = path.join(__dirname, 'public', 'download', 'TuBloxSetup.exe');
     if (!fs.existsSync(filePath)) return res.status(404).send('File not found');
     res.download(filePath, 'TuBloxSetup.exe');
+});
+
+app.get('/download/TuClient.zip', (req, res) => {
+    const filePath = path.join(__dirname, 'public', 'download', 'TuClient.zip');
+    if (!fs.existsSync(filePath)) return res.status(404).send('File not found');
+    res.download(filePath, 'TuClient.zip');
 });
 
 // ═══════════════════════════════════════════════════════════════

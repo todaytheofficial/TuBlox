@@ -998,6 +998,46 @@ function formatNumber(n) {
 }
 
 // ============================================
+// Heartbeat - keep online status
+// ============================================
+
+let heartbeatInterval = null;
+
+function startHeartbeat() {
+    if (heartbeatInterval) return;
+    
+    // Send immediately
+    fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+    
+    // Then every 30 seconds
+    heartbeatInterval = setInterval(() => {
+        fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+    }, 30000);
+}
+
+// Start heartbeat on any page where user is logged in
+document.addEventListener('DOMContentLoaded', () => {
+    // Check if user is logged in (has auth pages or protected pages)
+    const isProtectedPage = document.querySelector('.home-page') || 
+                           document.querySelector('.games-page') || 
+                           document.querySelector('.game-page') ||
+                           document.querySelector('.users-page') ||
+                           document.querySelector('.profile-page') ||
+                           document.querySelector('.forum-page');
+    
+    if (isProtectedPage) {
+        startHeartbeat();
+    }
+});
+
+// Cleanup
+window.addEventListener('beforeunload', () => {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+    }
+});
+
+// ============================================
 // Init
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {

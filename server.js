@@ -1,4 +1,4 @@
-// server.js - TuBlox с форумом (часть 1)
+// server.js - TuBlox с форумом (ПОЛНЫЙ)
 
 require('dotenv').config();
 const express = require('express');
@@ -40,7 +40,8 @@ app.get('/api/health', (req, res) => {
         status: 'ok', 
         uptime: process.uptime(),
         games: gameServers.size,
-        connections: connectedClients.size
+        connections: connectedClients.size,
+        wsClients: wss.clients.size
     });
 });
 
@@ -76,6 +77,8 @@ const PacketType = {
     BUILD_DATA: 51,
     SERVER_INFO: 52
 };
+
+console.log('[WS] WebSocket server initialized on path /ws');
 
 function sendToClient(ws, data) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return false;
@@ -134,6 +137,14 @@ function removePlayerFromGame(gameId, odilId) {
     
     game.players.delete(odilId);
     connectedClients.delete(odilId);
+    
+    console.log(`[WS] After removal - connectedClients: ${connectedClients.size}, gameServers: ${gameServers.size}`);
+
+    // Update lastSeen in database
+    User.findOneAndUpdate(
+        { odilId: odilId },
+        { lastSeen: new Date() }
+    ).catch(err => console.error('[DB] Update lastSeen error:', err));
 
     broadcastToGame(gameId, { type: PacketType.PLAYER_LEAVE, odilId });
 
@@ -148,54 +159,151 @@ function removePlayerFromGame(gameId, odilId) {
             }
         } else {
             gameServers.delete(gameId);
-            console.log(`[WS] Game server ${gameId} closed (empty)`);
+            console.log(`[WS] Game server ${gameId} closed (empty), total servers: ${gameServers.size}`);
         }
     }
 
     Game.findOneAndUpdate({ id: gameId }, { activePlayers: game.players.size }).catch(err => console.error('[DB] Update error:', err));
 }
 
+// ═══════════════════════════════════════════════════════════════
+// PRESENCE HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+function getUserPresence(odilId) {
+    const odilIdNum = typeof odilId === 'string' ? parseInt(odilId, 10) : odilId;
+    
+    if (isNaN(odilIdNum)) {
+        return { isOnline: false, currentGame: null };
+    }
+    
+    // Check all game servers
+    for (const [gameId, gameServer] of gameServers.entries()) {
+        const playerData = gameServer.players.get(odilIdNum);
+        
+        if (playerData && playerData.ws && playerData.ws.readyState === WebSocket.OPEN) {
+            return {
+                isOnline: true,
+                currentGame: {
+                    gameId: gameId,
+                    serverId: gameId,
+                    joinedAt: playerData.connectedAt 
+                        ? new Date(playerData.connectedAt).toISOString() 
+                        : new Date().toISOString()
+                }
+            };
+        }
+    }
+    
+    // Check connectedClients
+    const client = connectedClients.get(odilIdNum);
+    
+    if (client && client.ws && client.ws.readyState === WebSocket.OPEN) {
+        if (client.gameId) {
+            return {
+                isOnline: true,
+                currentGame: {
+                    gameId: client.gameId,
+                    serverId: client.gameId,
+                    joinedAt: new Date().toISOString()
+                }
+            };
+        }
+        return { isOnline: true, currentGame: null };
+    }
+    
+    return { isOnline: false, currentGame: null };
+}
+
+async function enrichPresenceWithGameInfo(presence) {
+    if (!presence.currentGame || !presence.currentGame.gameId) {
+        return presence;
+    }
+    
+    try {
+        const game = await Game.findOne({ id: presence.currentGame.gameId })
+            .select('title thumbnail id')
+            .lean();
+        
+        if (game) {
+            presence.currentGame.id = game.id;
+            presence.currentGame.title = game.title || game.id;
+            presence.currentGame.thumbnail = game.thumbnail || '';
+        } else {
+            presence.currentGame.id = presence.currentGame.gameId;
+            presence.currentGame.title = presence.currentGame.gameId;
+            presence.currentGame.thumbnail = '';
+        }
+    } catch (err) {
+        console.error('[Presence] Error:', err.message);
+        presence.currentGame.title = presence.currentGame.gameId;
+        presence.currentGame.thumbnail = '';
+    }
+    
+    return presence;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WEBSOCKET CONNECTION HANDLER
+// ═══════════════════════════════════════════════════════════════
+
 wss.on('connection', (ws, req) => {
+    const clientIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    console.log(`[WS] ========== NEW CONNECTION ==========`);
+    console.log(`[WS] IP: ${clientIP}`);
+    console.log(`[WS] URL: ${req.url}`);
+    console.log(`[WS] Total WS clients: ${wss.clients.size}`);
+    
     let clientOdilId = null;
     let clientGameId = null;
     let clientUsername = null;
     let isConnected = false;
-    let messageQueue = [];
-    let isProcessing = false;
 
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
 
-    async function processMessageQueue() {
-        if (isProcessing || messageQueue.length === 0) return;
-        isProcessing = true;
-        while (messageQueue.length > 0) {
-            const data = messageQueue.shift();
-            await handleMessage(data);
-        }
-        isProcessing = false;
-    }
-
-    async function handleMessage(data) {
+    ws.on('message', async (message) => {
         try {
+            const raw = message.toString();
+            const data = JSON.parse(raw);
+            
+            console.log(`[WS] Received type=${data.type} from ${clientUsername || 'unknown'}`);
+            
             switch (data.type) {
                 case PacketType.CONNECT_REQUEST: {
-                    if (!data.odilId || typeof data.odilId !== 'number') {
+                    console.log(`[WS] CONNECT_REQUEST:`, JSON.stringify(data));
+                    
+                    if (data.odilId === undefined || data.odilId === null) {
+                        console.log(`[WS] ERROR: No odilId`);
+                        sendToClient(ws, { type: PacketType.CONNECT_RESPONSE, success: false, message: 'Invalid odilId' });
+                        return;
+                    }
+                    
+                    const parsedOdilId = typeof data.odilId === 'string' ? parseInt(data.odilId, 10) : Number(data.odilId);
+                    
+                    if (isNaN(parsedOdilId) || parsedOdilId <= 0) {
+                        console.log(`[WS] ERROR: Invalid odilId: ${data.odilId}`);
                         sendToClient(ws, { type: PacketType.CONNECT_RESPONSE, success: false, message: 'Invalid odilId' });
                         return;
                     }
 
-                    const existingClient = connectedClients.get(data.odilId);
+                    // Disconnect existing
+                    const existingClient = connectedClients.get(parsedOdilId);
                     if (existingClient && existingClient.ws !== ws) {
-                        if (existingClient.gameId) removePlayerFromGame(existingClient.gameId, data.odilId);
+                        console.log(`[WS] Closing existing connection for #${parsedOdilId}`);
+                        if (existingClient.gameId) {
+                            removePlayerFromGame(existingClient.gameId, parsedOdilId);
+                        }
                         if (existingClient.ws && existingClient.ws.readyState === WebSocket.OPEN) {
                             existingClient.ws.close(1000, 'Reconnecting');
                         }
                     }
 
-                    clientOdilId = data.odilId;
+                    clientOdilId = parsedOdilId;
                     clientGameId = data.gameId || 'baseplate';
                     clientUsername = (data.username || `Player${clientOdilId}`).substring(0, 32);
+                    
+                    console.log(`[WS] Player: ${clientUsername} (#${clientOdilId}) -> game "${clientGameId}"`);
 
                     const game = getOrCreateGameServer(clientGameId);
                     
@@ -203,9 +311,12 @@ wss.on('connection', (ws, req) => {
                     if (game.hostOdilId === null || game.players.size === 0) {
                         game.hostOdilId = clientOdilId;
                         isHost = true;
+                        console.log(`[WS] Player is HOST`);
                         try {
                             const gameDoc = await Game.findOne({ id: clientGameId });
-                            if (gameDoc && gameDoc.buildData) game.buildData = gameDoc.buildData;
+                            if (gameDoc && gameDoc.buildData) {
+                                game.buildData = gameDoc.buildData;
+                            }
                         } catch (err) {
                             console.error('[DB] Load buildData error:', err);
                         }
@@ -214,27 +325,55 @@ wss.on('connection', (ws, req) => {
                     const existingPlayers = [];
                     game.players.forEach((player, odilId) => {
                         if (odilId !== clientOdilId) {
-                            existingPlayers.push({ odilId, username: player.username, position: { ...player.position } });
+                            existingPlayers.push({
+                                odilId,
+                                username: player.username,
+                                position: { ...player.position }
+                            });
                         }
                     });
 
                     const spawnPosition = { x: 0, y: 5, z: 0 };
 
                     game.players.set(clientOdilId, {
-                        ws, username: clientUsername,
-                        position: { ...spawnPosition }, rotation: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 },
-                        animationId: 0, isGrounded: false, isJumping: false, isSprinting: false, isInWater: false,
-                        lastUpdate: Date.now(), connectedAt: Date.now()
+                        ws,
+                        username: clientUsername,
+                        position: { ...spawnPosition },
+                        rotation: { x: 0, y: 0, z: 0 },
+                        velocity: { x: 0, y: 0, z: 0 },
+                        animationId: 0,
+                        isGrounded: false,
+                        isJumping: false,
+                        isSprinting: false,
+                        isInWater: false,
+                        lastUpdate: Date.now(),
+                        connectedAt: Date.now()
                     });
 
-                    connectedClients.set(clientOdilId, { ws, gameId: clientGameId, username: clientUsername });
+                    connectedClients.set(clientOdilId, {
+                        ws,
+                        gameId: clientGameId,
+                        username: clientUsername
+                    });
+                    
                     isConnected = true;
 
-                    Game.findOneAndUpdate({ id: clientGameId }, { activePlayers: game.players.size }).catch(err => console.error('[DB] Update error:', err));
+                    console.log(`[WS] ✓ SUCCESS! connectedClients=${connectedClients.size}, gameServers=${gameServers.size}, players in game=${game.players.size}`);
+
+                    Game.findOneAndUpdate(
+                        { id: clientGameId },
+                        { activePlayers: game.players.size }
+                    ).catch(err => console.error('[DB] Update error:', err));
 
                     sendToClient(ws, {
-                        type: PacketType.CONNECT_RESPONSE, success: true, odilId: clientOdilId, isHost,
-                        spawnX: spawnPosition.x, spawnY: spawnPosition.y, spawnZ: spawnPosition.z, message: 'Connected!'
+                        type: PacketType.CONNECT_RESPONSE,
+                        success: true,
+                        odilId: clientOdilId,
+                        isHost,
+                        spawnX: spawnPosition.x,
+                        spawnY: spawnPosition.y,
+                        spawnZ: spawnPosition.z,
+                        message: 'Connected!'
                     });
 
                     if (isHost && game.buildData) {
@@ -243,19 +382,30 @@ wss.on('connection', (ws, req) => {
 
                     setTimeout(() => {
                         if (ws.readyState !== WebSocket.OPEN) return;
+                        
                         for (const player of existingPlayers) {
                             sendToClient(ws, {
-                                type: PacketType.PLAYER_JOIN, odilId: player.odilId, username: player.username,
-                                posX: player.position.x, posY: player.position.y, posZ: player.position.z
+                                type: PacketType.PLAYER_JOIN,
+                                odilId: player.odilId,
+                                username: player.username,
+                                posX: player.position.x,
+                                posY: player.position.y,
+                                posZ: player.position.z
                             });
                         }
+                        
                         setTimeout(() => {
                             broadcastToGame(clientGameId, {
-                                type: PacketType.PLAYER_JOIN, odilId: clientOdilId, username: clientUsername,
-                                posX: spawnPosition.x, posY: spawnPosition.y, posZ: spawnPosition.z
+                                type: PacketType.PLAYER_JOIN,
+                                odilId: clientOdilId,
+                                username: clientUsername,
+                                posX: spawnPosition.x,
+                                posY: spawnPosition.y,
+                                posZ: spawnPosition.z
                             }, clientOdilId);
                         }, 100);
                     }, 200);
+                    
                     break;
                 }
 
@@ -266,19 +416,21 @@ wss.on('connection', (ws, req) => {
                     const player = game.players.get(clientOdilId);
                     if (!player) break;
 
-                    const posX = typeof data.posX === 'number' && isFinite(data.posX) ? data.posX : player.position.x;
-                    const posY = typeof data.posY === 'number' && isFinite(data.posY) ? data.posY : player.position.y;
-                    const posZ = typeof data.posZ === 'number' && isFinite(data.posZ) ? data.posZ : player.position.z;
-                    const rotX = typeof data.rotX === 'number' && isFinite(data.rotX) ? data.rotX : 0;
-                    const rotY = typeof data.rotY === 'number' && isFinite(data.rotY) ? data.rotY : 0;
-                    const rotZ = typeof data.rotZ === 'number' && isFinite(data.rotZ) ? data.rotZ : 0;
-                    const velX = typeof data.velX === 'number' && isFinite(data.velX) ? data.velX : 0;
-                    const velY = typeof data.velY === 'number' && isFinite(data.velY) ? data.velY : 0;
-                    const velZ = typeof data.velZ === 'number' && isFinite(data.velZ) ? data.velZ : 0;
-
-                    player.position = { x: posX, y: posY, z: posZ };
-                    player.rotation = { x: rotX, y: rotY, z: rotZ };
-                    player.velocity = { x: velX, y: velY, z: velZ };
+                    player.position = {
+                        x: typeof data.posX === 'number' && isFinite(data.posX) ? data.posX : player.position.x,
+                        y: typeof data.posY === 'number' && isFinite(data.posY) ? data.posY : player.position.y,
+                        z: typeof data.posZ === 'number' && isFinite(data.posZ) ? data.posZ : player.position.z
+                    };
+                    player.rotation = {
+                        x: typeof data.rotX === 'number' && isFinite(data.rotX) ? data.rotX : 0,
+                        y: typeof data.rotY === 'number' && isFinite(data.rotY) ? data.rotY : 0,
+                        z: typeof data.rotZ === 'number' && isFinite(data.rotZ) ? data.rotZ : 0
+                    };
+                    player.velocity = {
+                        x: typeof data.velX === 'number' && isFinite(data.velX) ? data.velX : 0,
+                        y: typeof data.velY === 'number' && isFinite(data.velY) ? data.velY : 0,
+                        z: typeof data.velZ === 'number' && isFinite(data.velZ) ? data.velZ : 0
+                    };
                     player.animationId = typeof data.animationId === 'number' ? data.animationId : 0;
                     player.isGrounded = !!data.isGrounded;
                     player.isJumping = !!data.isJumping;
@@ -287,61 +439,67 @@ wss.on('connection', (ws, req) => {
                     player.lastUpdate = Date.now();
 
                     broadcastToGame(clientGameId, {
-                        type: PacketType.PLAYER_STATE, odilId: clientOdilId,
-                        posX, posY, posZ, rotX, rotY, rotZ, velX, velY, velZ,
-                        animationId: player.animationId, isGrounded: player.isGrounded,
-                        isJumping: player.isJumping, isSprinting: player.isSprinting, isInWater: player.isInWater
+                        type: PacketType.PLAYER_STATE,
+                        odilId: clientOdilId,
+                        posX: player.position.x,
+                        posY: player.position.y,
+                        posZ: player.position.z,
+                        rotX: player.rotation.x,
+                        rotY: player.rotation.y,
+                        rotZ: player.rotation.z,
+                        velX: player.velocity.x,
+                        velY: player.velocity.y,
+                        velZ: player.velocity.z,
+                        animationId: player.animationId,
+                        isGrounded: player.isGrounded,
+                        isJumping: player.isJumping,
+                        isSprinting: player.isSprinting,
+                        isInWater: player.isInWater
                     }, clientOdilId);
                     break;
                 }
 
                 case PacketType.CHAT_MESSAGE: {
                     if (!clientGameId || !clientOdilId || !isConnected) break;
-                    const message = (data.message || '').trim();
-                    if (!message || message.length === 0) break;
+                    const chatMsg = (data.message || '').trim();
+                    if (!chatMsg) break;
+                    
                     broadcastToGame(clientGameId, {
-                        type: PacketType.CHAT_MESSAGE, odilId: clientOdilId,
-                        username: clientUsername || `Player${clientOdilId}`, message: message.substring(0, 256)
+                        type: PacketType.CHAT_MESSAGE,
+                        odilId: clientOdilId,
+                        username: clientUsername,
+                        message: chatMsg.substring(0, 256)
                     }, clientOdilId);
                     break;
                 }
 
                 case PacketType.PING: {
-                    sendToClient(ws, { type: PacketType.PONG, clientTime: data.clientTime, serverTime: Date.now() });
+                    sendToClient(ws, {
+                        type: PacketType.PONG,
+                        clientTime: data.clientTime,
+                        serverTime: Date.now()
+                    });
                     break;
                 }
 
                 case PacketType.DISCONNECT: {
+                    console.log(`[WS] DISCONNECT from ${clientUsername} (#${clientOdilId})`);
                     isConnected = false;
                     ws.close(1000, 'Client disconnect');
                     break;
                 }
             }
         } catch (err) {
-            console.error('[WS] Handle message error:', err);
-        }
-    }
-
-    ws.on('message', (message) => {
-        try {
-            const data = JSON.parse(message.toString());
-            if (data.type === PacketType.CONNECT_REQUEST) {
-                messageQueue.push(data);
-                processMessageQueue();
-            } else {
-                handleMessage(data);
-            }
-        } catch (err) {
-            console.error('[WS] Parse error:', err.message);
+            console.error('[WS] Message error:', err);
         }
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
+        console.log(`[WS] Connection closed: ${clientUsername} (#${clientOdilId}), code=${code}`);
         if (clientGameId && clientOdilId && isConnected) {
             removePlayerFromGame(clientGameId, clientOdilId);
         }
         isConnected = false;
-        messageQueue = [];
     });
 
     ws.on('error', (err) => {
@@ -414,6 +572,7 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true },
     createdAt: { type: Date, default: Date.now },
     lastLogin: { type: Date, default: Date.now },
+    lastSeen: { type: Date, default: Date.now },
     gameData: {
         level: { type: Number, default: 1 },
         coins: { type: Number, default: 0 },
@@ -449,7 +608,6 @@ const launchTokenSchema = new mongoose.Schema({
 });
 const LaunchToken = mongoose.model('LaunchToken', launchTokenSchema);
 
-// Forum schemas
 const forumPostSchema = new mongoose.Schema({
     postId: { type: Number, unique: true },
     authorId: { type: Number, required: true },
@@ -606,32 +764,165 @@ app.get('/game/:id', auth, (req, res) => res.sendFile(path.join(__dirname, 'page
 app.get('/users', (req, res) => res.sendFile(path.join(__dirname, 'pages', 'users.html')));
 app.get('/user/:id', (req, res) => res.sendFile(path.join(__dirname, 'pages', 'profile.html')));
 
-// Forum pages
 app.get('/TuForums', (req, res) => res.sendFile(path.join(__dirname, 'pages', 'forum.html')));
 app.get('/TuForums/:ownerId', (req, res) => res.sendFile(path.join(__dirname, 'pages', 'forum-user.html')));
 app.get('/TuForums/:ownerId/:postId', (req, res) => res.sendFile(path.join(__dirname, 'pages', 'forum-post.html')));
+
+// ═══════════════════════════════════════════════════════════════
+// API - DEBUG
+// ═══════════════════════════════════════════════════════════════
+
+app.get('/api/debug/presence/:id', async (req, res) => {
+    const odilId = parseInt(req.params.id);
+    
+    const connectedList = [];
+    for (const [id, c] of connectedClients.entries()) {
+        connectedList.push({
+            odilId: id,
+            type: typeof id,
+            username: c.username,
+            gameId: c.gameId,
+            wsState: c.ws ? c.ws.readyState : null
+        });
+    }
+    
+    const gamesList = [];
+    for (const [gameId, game] of gameServers.entries()) {
+        const players = [];
+        for (const [pid, p] of game.players.entries()) {
+            players.push({
+                odilId: pid,
+                type: typeof pid,
+                username: p.username,
+                wsState: p.ws ? p.ws.readyState : null,
+                connectedAt: p.connectedAt
+            });
+        }
+        gamesList.push({ gameId, hostOdilId: game.hostOdilId, players });
+    }
+    
+    const presence = getUserPresence(odilId);
+    const enriched = await enrichPresenceWithGameInfo({ ...presence });
+    
+    res.json({
+        requestedOdilId: odilId,
+        wssClientsCount: wss.clients.size,
+        connectedClientsCount: connectedClients.size,
+        connectedClients: connectedList,
+        gameServersCount: gameServers.size,
+        gameServers: gamesList,
+        presence,
+        enrichedPresence: enriched
+    });
+});
+
+app.get('/api/debug/ws', (req, res) => {
+    const wsClients = [];
+    wss.clients.forEach((ws, i) => {
+        wsClients.push({
+            index: i,
+            readyState: ws.readyState,
+            isAlive: ws.isAlive
+        });
+    });
+    
+    res.json({
+        wssClientsCount: wss.clients.size,
+        wsClients,
+        connectedClientsCount: connectedClients.size,
+        gameServersCount: gameServers.size
+    });
+});
 
 // ═══════════════════════════════════════════════════════════════
 // API - USER
 // ═══════════════════════════════════════════════════════════════
 
 app.get('/api/user', authAPI, (req, res) => {
-    res.json({ success: true, user: { id: req.user._id, odilId: req.user.odilId, username: req.user.username, createdAt: req.user.createdAt, gameData: req.user.gameData } });
+    const presence = getUserPresence(req.user.odilId);
+    
+    res.json({ 
+        success: true, 
+        user: { 
+            id: req.user._id, 
+            odilId: req.user.odilId, 
+            username: req.user.username, 
+            createdAt: req.user.createdAt,
+            lastSeen: req.user.lastSeen,
+            isOnline: presence.isOnline,
+            currentGame: presence.currentGame,
+            gameData: req.user.gameData 
+        } 
+    });
 });
 
 app.get('/api/users', async (req, res) => {
     try {
-        const users = await User.find().select('odilId username gameData createdAt').sort({ createdAt: -1 }).limit(100);
-        res.json({ success: true, users });
-    } catch (err) { res.status(500).json({ success: false, message: 'Server error' }); }
+        const users = await User.find()
+            .select('odilId username gameData createdAt lastSeen')
+            .sort({ createdAt: -1 })
+            .limit(100);
+        
+        const usersWithPresence = users.map(u => {
+            const presence = getUserPresence(u.odilId);
+            return {
+                ...u.toObject(),
+                isOnline: presence.isOnline,
+                currentGame: presence.currentGame
+            };
+        });
+        
+        usersWithPresence.sort((a, b) => {
+            const aScore = a.currentGame ? 2 : (a.isOnline ? 1 : 0);
+            const bScore = b.currentGame ? 2 : (b.isOnline ? 1 : 0);
+            return bScore - aScore;
+        });
+        
+        res.json({ success: true, users: usersWithPresence });
+    } catch (err) { 
+        res.status(500).json({ success: false, message: 'Server error' }); 
+    }
 });
 
 app.get('/api/user/:id', async (req, res) => {
     try {
-        const user = await User.findOne({ odilId: parseInt(req.params.id) }).select('odilId username gameData createdAt');
-        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-        res.json({ success: true, user });
-    } catch (err) { res.status(500).json({ success: false, message: 'Server error' }); }
+        const odilId = parseInt(req.params.id);
+        if (isNaN(odilId)) {
+            return res.status(400).json({ success: false, message: 'Invalid user ID' });
+        }
+        
+        const user = await User.findOne({ odilId })
+            .select('odilId username gameData createdAt lastSeen lastLogin');
+        
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
+        const presence = getUserPresence(odilId);
+        let enrichedPresence = { ...presence };
+        
+        if (presence.currentGame) {
+            enrichedPresence = await enrichPresenceWithGameInfo(enrichedPresence);
+        }
+        
+        console.log(`[API] User #${odilId} presence:`, JSON.stringify(enrichedPresence));
+        
+        res.json({ 
+            success: true, 
+            user: {
+                odilId: user.odilId,
+                username: user.username,
+                gameData: user.gameData,
+                createdAt: user.createdAt,
+                isOnline: enrichedPresence.isOnline,
+                currentGame: enrichedPresence.currentGame,
+                lastSeen: enrichedPresence.isOnline ? null : (user.lastSeen || user.lastLogin || user.createdAt)
+            }
+        });
+    } catch (err) { 
+        console.error('[API] User error:', err);
+        res.status(500).json({ success: false, message: 'Server error' }); 
+    }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -653,7 +944,7 @@ app.post('/api/register', async (req, res) => {
 
         const odilId = await getNextUserId();
         const hash = await bcrypt.hash(password, 12);
-        const user = new User({ username: cleanUsername, password: hash, odilId });
+        const user = new User({ username: cleanUsername, password: hash, odilId, lastSeen: new Date() });
         await user.save();
 
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -678,6 +969,7 @@ app.post('/api/login', async (req, res) => {
         if (!valid) return res.status(400).json({ success: false, message: 'Invalid username or password' });
 
         user.lastLogin = new Date();
+        user.lastSeen = new Date();
         await user.save();
 
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -689,7 +981,14 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-app.post('/api/logout', (req, res) => {
+app.post('/api/logout', async (req, res) => {
+    try {
+        const token = req.cookies.token;
+        if (token) {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            await User.findByIdAndUpdate(decoded.id, { lastSeen: new Date() });
+        }
+    } catch (e) {}
     res.clearCookie('token');
     res.json({ success: true });
 });

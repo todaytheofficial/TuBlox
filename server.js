@@ -2237,9 +2237,9 @@ app.delete('/api/forum/post/:postId', authAPI, async (req, res) => {
 
 app.get('/api/version', (req, res) => {
     res.json({
-        version: "0.5",
+        version: "0.5.1",
         downloadUrl: "https://tublox.onrender.com/download/TuClient.zip",
-        message: "Patch 0.5 - AntiCheat"
+        message: "Patch 0.5.1 - Fix"
     });
 });
 

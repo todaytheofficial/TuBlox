@@ -816,6 +816,15 @@ app.get('/api/debug/presence/:id', async (req, res) => {
     });
 });
 
+// ═══════════════════════════════════════════════════════════════
+// API - HEARTBEAT
+// ═══════════════════════════════════════════════════════════════
+
+app.post('/api/heartbeat', authAPI, (req, res) => {
+    // Session already updated in authAPI middleware via onlineSessions.set()
+    res.json({ success: true, timestamp: Date.now() });
+});
+
 app.get('/api/debug/ws', (req, res) => {
     const wsClients = [];
     wss.clients.forEach((ws, i) => {

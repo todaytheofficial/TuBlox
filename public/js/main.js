@@ -549,29 +549,36 @@ async function loadUsers() {
 }
 
 function buildProfileHTML(u) {
-    var statusHtml;
-    if (u.currentGame) {
-        statusHtml = '<div class="profile-status in-game"><span class="status-dot"></span>In Game</div>';
-    } else if (u.isOnline) {
-        statusHtml = '<div class="profile-status online"><span class="status-dot"></span>Online</div>';
-    } else {
-        statusHtml = '<div class="profile-status offline"><span class="status-dot"></span>Offline</div>';
+    var statusClass = u.currentGame ? 'in-game' : (u.isOnline ? 'online' : 'offline');
+    var statusText = u.currentGame ? 'In Game' : (u.isOnline ? 'Online' : 'Offline');
+
+    var statusHtml =
+        '<div class="profile-status ' + statusClass + '">' +
+            '<span class="status-dot"></span>' + statusText +
+        '</div>';
+
+    // Badges
+    var badgesHtml = '';
+    if (u.badges && u.badges.length > 0) {
+        var badgeItems = '';
+        for (var i = 0; i < u.badges.length; i++) {
+            var badge = u.badges[i];
+            badgeItems +=
+                '<div class="profile-badge badge-' + badge.id + '" data-name="' + escapeHtml(badge.name) + '">' +
+                    '<div class="profile-badge-img" style="background-image:url(\'' + escapeHtml(badge.icon) + '\')"></div>' +
+                '</div>';
+        }
+        badgesHtml = '<div class="profile-avatar-badges">' + badgeItems + '</div>';
     }
 
-    var lastSeenHtml = '';
-    if (!u.isOnline && u.lastSeen) {
-        lastSeenHtml = '<div class="profile-last-seen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Last seen ' + formatLastSeen(u.lastSeen) + '</div>';
-    }
-
+    // Playing card
     var playingHtml = '';
     if (u.currentGame) {
         var game = u.currentGame;
-        var thumbHtml;
-        if (game.thumbnail) {
-            thumbHtml = '<img src="' + escapeHtml(game.thumbnail) + '" alt="' + escapeHtml(game.title || 'Game') + '">';
-        } else {
-            thumbHtml = '<div class="placeholder-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/></svg></div>';
-        }
+        var thumbHtml = game.thumbnail
+            ? '<img src="' + escapeHtml(game.thumbnail) + '" alt="' + escapeHtml(game.title || 'Game') + '">'
+            : '<div class="placeholder-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/></svg></div>';
+
         playingHtml =
             '<div class="profile-playing">' +
                 '<div class="profile-playing-thumb">' + thumbHtml + '</div>' +
@@ -580,25 +587,69 @@ function buildProfileHTML(u) {
                     '<div class="profile-playing-name">' + escapeHtml(game.title || 'Unknown Game') + '</div>' +
                 '</div>' +
                 '<div class="profile-playing-join">' +
-                    '<button class="btn btn-blue btn-sm" onclick="joinPlayerGame(\'' + escapeHtml(game.gameId || game.serverId || '') + '\')">' +
+                    '<button class="btn btn-primary btn-sm" onclick="joinPlayerGame(\'' + escapeHtml(game.gameId || game.serverId || '') + '\')">' +
                         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polygon points="5 3 19 12 5 21 5 3"/></svg> Join' +
                     '</button>' +
                 '</div>' +
             '</div>';
     }
 
-    return '<div class="profile-header">' +
-        '<div class="profile-avatar"></div>' +
-        '<h1 class="profile-name">' + escapeHtml(u.username) + '</h1>' +
-        '<div class="profile-id">#' + u.odilId + '</div>' +
-        statusHtml +
-        lastSeenHtml +
-    '</div>' +
-    playingHtml +
-    '<div class="profile-joined">' +
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' +
-        'Joined ' + formatDate(u.createdAt) +
-    '</div>';
+    // Last seen value
+    var lastSeenValue;
+    if (u.isOnline || u.currentGame) {
+        lastSeenValue =
+            '<span class="profile-info-value online">' +
+                '<span class="status-dot-sm"></span>Online' +
+            '</span>';
+    } else {
+        lastSeenValue =
+            '<span class="profile-info-value offline">' +
+                '<span class="status-dot-sm"></span>Offline' +
+            '</span>';
+    }
+
+    // Frame 1 — Avatar
+    var frame1 =
+        '<div class="profile-avatar-frame">' +
+            '<div class="profile-frame-top">' +
+                '<div>' +
+                    '<div class="profile-name">' + escapeHtml(u.username) + '</div>' +
+                    '<div class="profile-id">#' + u.odilId + '</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="profile-avatar" id="profile-avatar-container"></div>' +
+            '<div class="profile-frame-bottom">' +
+                (badgesHtml || '<div></div>') +
+                statusHtml +
+            '</div>' +
+        '</div>';
+
+    // Frame 2 — Info
+    var frame2 =
+        '<div class="profile-info-card">' +
+            '<div class="profile-info-header">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>' +
+                '<span>Info</span>' +
+            '</div>' +
+            '<div class="profile-info-rows">' +
+                '<div class="profile-info-row">' +
+                    '<span class="profile-info-label">' +
+                        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' +
+                        'Join date' +
+                    '</span>' +
+                    '<span class="profile-info-value">' + formatDate(u.createdAt) + '</span>' +
+                '</div>' +
+                '<div class="profile-info-row" id="profile-lastseen-row">' +
+                    '<span class="profile-info-label">' +
+                        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' +
+                        'Last seen' +
+                    '</span>' +
+                    lastSeenValue +
+                '</div>' +
+            '</div>' +
+        '</div>';
+
+    return frame1 + playingHtml + frame2;
 }
 
 async function loadProfile() {
@@ -630,6 +681,7 @@ function startProfileRefresh(userId) {
             if (!data.success) return;
             var u = data.user;
 
+            // Update status
             var statusEl = document.querySelector('.profile-status');
             if (statusEl) {
                 var cls = 'profile-status';
@@ -648,6 +700,7 @@ function startProfileRefresh(userId) {
                 statusEl.innerHTML = inner;
             }
 
+            // Update last seen
             var lastSeenEl = document.querySelector('.profile-last-seen');
             if (!u.isOnline && u.lastSeen) {
                 var lsHtml = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Last seen ' + formatLastSeen(u.lastSeen);
@@ -666,6 +719,7 @@ function startProfileRefresh(userId) {
                 lastSeenEl.remove();
             }
 
+            // Update playing
             var playingEl = document.querySelector('.profile-playing');
             if (u.currentGame) {
                 var game = u.currentGame;
@@ -682,7 +736,7 @@ function startProfileRefresh(userId) {
                         '<div class="profile-playing-name">' + escapeHtml(game.title || 'Unknown Game') + '</div>' +
                     '</div>' +
                     '<div class="profile-playing-join">' +
-                        '<button class="btn btn-blue btn-sm" onclick="joinPlayerGame(\'' + escapeHtml(game.gameId || game.serverId || '') + '\')">' +
+                        '<button class="btn btn-primary btn-sm" onclick="joinPlayerGame(\'' + escapeHtml(game.gameId || game.serverId || '') + '\')">' +
                             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polygon points="5 3 19 12 5 21 5 3"/></svg> Join' +
                         '</button>' +
                     '</div>';
@@ -690,17 +744,18 @@ function startProfileRefresh(userId) {
                 if (playingEl) {
                     playingEl.innerHTML = ph;
                 } else {
-                    var hdr = document.querySelector('.profile-header');
-                    if (hdr) {
+                    var frame = document.querySelector('.profile-avatar-frame');
+                    if (frame) {
                         var d = document.createElement('div');
                         d.className = 'profile-playing';
                         d.innerHTML = ph;
-                        hdr.insertAdjacentElement('afterend', d);
+                        frame.insertAdjacentElement('afterend', d);
                     }
                 }
             } else if (playingEl) {
                 playingEl.remove();
             }
+
         } catch (e) { }
     }, 5000);
 }

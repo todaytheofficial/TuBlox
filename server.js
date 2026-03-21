@@ -1230,7 +1230,7 @@ setInterval(() => {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // ═══════════════════════════════════════════════════════════════
 // MONGOOSE SCHEMAS
@@ -1337,6 +1337,86 @@ const banSchema = new mongoose.Schema({
     expiresAt: { type: Date, default: null } // null = permanent
 });
 const Ban = mongoose.model('Ban', banSchema);
+
+const BADGES = {
+    'Staff': {
+        id: 'Staff',
+        name: 'Staff',
+        description: 'TuBlox Staff Member',
+        icon: '/img/badges/Staff.svg',
+        holders: [1]
+    },
+    'TuBloxUser': {
+        id: 'TuBloxUser',
+        name: 'TuBlox User',
+        description: 'Verified TuBlox Player',
+        icon: '/img/badges/TuBloxUser.svg',
+        holders: null
+    }
+};
+
+function getUserBadges(odilId) {
+    const badges = [];
+
+    for (const [badgeId, badge] of Object.entries(BADGES)) {
+        if (badge.holders === null) {
+            badges.push({
+                id: badge.id,
+                name: badge.name,
+                description: badge.description,
+                icon: badge.icon
+            });
+        } else if (Array.isArray(badge.holders) && badge.holders.includes(odilId)) {
+            badges.push({
+                id: badge.id,
+                name: badge.name,
+                description: badge.description,
+                icon: badge.icon
+            });
+        }
+    }
+
+    // Staff first, then TuBloxUser
+    const order = { 'Staff': 0, 'TuBloxUser': 1 };
+    badges.sort((a, b) => (order[a.id] ?? 99) - (order[b.id] ?? 99));
+
+    return badges;
+}
+// Get badges for a user
+function getUserBadges(odilId) {
+    const badges = [];
+    
+    for (const [badgeId, badge] of Object.entries(BADGES)) {
+        // If holders is null, everyone gets it
+        if (badge.holders === null) {
+            badges.push({
+                id: badge.id,
+                name: badge.name,
+                description: badge.description,
+                icon: badge.icon,
+                color: badge.color,
+                rarity: badge.rarity
+            });
+        }
+        // If holders is an array, check if user is in it
+        else if (Array.isArray(badge.holders) && badge.holders.includes(odilId)) {
+            badges.push({
+                id: badge.id,
+                name: badge.name,
+                description: badge.description,
+                icon: badge.icon,
+                color: badge.color,
+                rarity: badge.rarity
+            });
+        }
+    }
+    
+    // Sort: legendary first, then rare, then common
+    const rarityOrder = { legendary: 0, epic: 1, rare: 2, uncommon: 3, common: 4 };
+    badges.sort((a, b) => (rarityOrder[a.rarity] || 99) - (rarityOrder[b.rarity] || 99));
+    
+    return badges;
+}
 
 // ═══════════════════════════════════════════════════════════════
 // WHITELIST SCHEMA (Simplified)
@@ -1509,6 +1589,7 @@ app.get('/TuForums/:ownerId/:postId', (req, res) => res.sendFile(path.join(__dir
 app.get('/whitelist', (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'whitelist.html'));
 });
+
 
 
 
@@ -1784,6 +1865,8 @@ app.get('/api/debug/ws', (req, res) => {
 
 app.get('/api/user', authAPI, (req, res) => {
     const presence = getUserPresence(req.user.odilId);
+    const badges = getUserBadges(req.user.odilId);
+    
     res.json({ 
         success: true, 
         user: { 
@@ -1795,11 +1878,11 @@ app.get('/api/user', authAPI, (req, res) => {
             isOnline: presence.isOnline,
             currentGame: presence.currentGame,
             gameData: req.user.gameData,
-            isAdmin: antiCheat.adminIds.has(req.user.odilId)
+            isAdmin: antiCheat.adminIds.has(req.user.odilId),
+            badges: badges
         } 
     });
 });
-
 app.get('/api/users', async (req, res) => {
     try {
         const users = await User.find().select('odilId username gameData createdAt lastSeen').sort({ createdAt: -1 }).limit(100);
@@ -1832,6 +1915,9 @@ app.get('/api/user/:id', async (req, res) => {
             enrichedPresence = await enrichPresenceWithGameInfo(enrichedPresence);
         }
         
+        // Get badges for this user
+        const badges = getUserBadges(odilId);
+        
         res.json({ 
             success: true, 
             user: {
@@ -1842,12 +1928,48 @@ app.get('/api/user/:id', async (req, res) => {
                 isOnline: enrichedPresence.isOnline,
                 currentGame: enrichedPresence.currentGame,
                 lastSeen: enrichedPresence.isOnline ? null : (user.lastSeen || user.lastLogin || user.createdAt),
-                isAdmin: antiCheat.adminIds.has(odilId)
+                isAdmin: antiCheat.adminIds.has(odilId),
+                badges: badges
             }
         });
     } catch (err) { 
         console.error('[API] User error:', err);
         res.status(500).json({ success: false, message: 'Server error' }); 
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// API - BADGES
+// ═══════════════════════════════════════════════════════════════
+
+// Get all available badges
+app.get('/api/badges', (req, res) => {
+    const allBadges = Object.values(BADGES).map(b => ({
+        id: b.id,
+        name: b.name,
+        description: b.description,
+        icon: b.icon,
+        color: b.color,
+        rarity: b.rarity,
+        isExclusive: b.holders !== null
+    }));
+    res.json({ success: true, badges: allBadges });
+});
+
+// Get badges for specific user
+app.get('/api/user/:id/badges', async (req, res) => {
+    try {
+        const odilId = parseInt(req.params.id);
+        if (isNaN(odilId)) return res.status(400).json({ success: false, message: 'Invalid user ID' });
+        
+        const user = await User.findOne({ odilId }).select('odilId username');
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+        
+        const badges = getUserBadges(odilId);
+        res.json({ success: true, badges, username: user.username, odilId: user.odilId });
+    } catch (err) {
+        console.error('[API] Badges error:', err);
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 

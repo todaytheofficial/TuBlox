@@ -1,61 +1,112 @@
-// ============================================
-// Console
-// ============================================
 console.clear();
-console.log('%cTUBLOX', 'font-size:52px;font-weight:800;color:#fff;');
-console.log('%c⛔ STOP!', 'font-size:24px;font-weight:bold;color:#f00;');
-console.log('%cDo not paste code here.', 'font-size:14px;color:#ff4444;');
 
-// ============================================
-// Toast
-// ============================================
-function toast(msg, type = 'success') {
+let currentUser = null;
+let currentLaunchGameId = null;
+let currentGameServers = [];
+let heartbeatInterval = null;
+let profileRefreshInterval = null;
+
+(function setFavicon() {
+    const existing = document.querySelector('link[rel="icon"]');
+    if (existing) existing.remove();
+    const link = document.createElement('link');
+    link.rel = 'icon';
+    link.type = 'image/svg+xml';
+    link.href = '/img/logo.svg';
+    document.head.appendChild(link);
+    const apple = document.querySelector('link[rel="apple-touch-icon"]');
+    if (apple) apple.remove();
+    const appleLink = document.createElement('link');
+    appleLink.rel = 'apple-touch-icon';
+    appleLink.href = '/img/logo.svg';
+    document.head.appendChild(appleLink);
+})();
+
+function toast(msg, type) {
+    type = type || 'success';
     let c = document.querySelector('.toast-container');
     if (!c) {
         c = document.createElement('div');
         c.className = 'toast-container';
         document.body.appendChild(c);
     }
-    const icon = type === 'success'
-        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>'
-        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    const el = document.createElement('div');
-    el.className = `toast ${type}`;
-    el.innerHTML = `${icon}<span>${msg}</span>`;
+    var icon;
+    if (type === 'success') {
+        icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+    } else {
+        icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    }
+    var el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.innerHTML = icon + '<span>' + msg + '</span>';
     c.appendChild(el);
-    setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 200); }, 3000);
+    setTimeout(function () {
+        el.style.opacity = '0';
+        setTimeout(function () { el.remove(); }, 200);
+    }, 3000);
 }
 
-// ============================================
-// Current User
-// ============================================
-let currentUser = null;
-let currentLaunchGameId = null;
-let currentGameServers = [];
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
-// ============================================
-// Auth
-// ============================================
+function formatNumber(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return n.toString();
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return 'Unknown';
+    var d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 'Unknown';
+    var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+}
+
+function formatLastSeen(dateStr) {
+    if (!dateStr) return 'Unknown';
+    var d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 'Unknown';
+    var now = new Date();
+    var diffSec = Math.floor((now - d) / 1000);
+    var diffMin = Math.floor(diffSec / 60);
+    var diffHour = Math.floor(diffMin / 60);
+    var diffDay = Math.floor(diffHour / 24);
+    if (diffSec < 30) return 'Just now';
+    if (diffMin < 1) return 'Less than a minute ago';
+    if (diffMin < 60) return diffMin + ' minute' + (diffMin !== 1 ? 's' : '') + ' ago';
+    if (diffHour < 24) return diffHour + ' hour' + (diffHour !== 1 ? 's' : '') + ' ago';
+    if (diffDay < 7) return diffDay + ' day' + (diffDay !== 1 ? 's' : '') + ' ago';
+    return formatDate(dateStr);
+}
+
+function gamePlaceholder() {
+    return '<div class="placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/></svg></div>';
+}
+
 function initTabs() {
-    document.querySelectorAll('.auth-tab').forEach(tab => {
-        tab.onclick = () => {
-            const t = tab.dataset.tab;
-            document.querySelectorAll('.auth-tab').forEach(x => x.classList.remove('active'));
-            document.querySelectorAll('.auth-form').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.auth-tab').forEach(function (tab) {
+        tab.onclick = function () {
+            var t = tab.dataset.tab;
+            document.querySelectorAll('.auth-tab').forEach(function (x) { x.classList.remove('active'); });
+            document.querySelectorAll('.auth-form').forEach(function (x) { x.classList.remove('active'); });
             tab.classList.add('active');
-            document.getElementById(`${t}-form`).classList.add('active');
+            document.getElementById(t + '-form').classList.add('active');
         };
     });
 }
 
 async function register(e) {
     e.preventDefault();
-    const btn = e.target.querySelector('button');
-    const html = btn.innerHTML;
+    var btn = e.target.querySelector('button');
+    var html = btn.innerHTML;
     btn.innerHTML = '<div class="loader"></div>';
     btn.disabled = true;
     try {
-        const res = await fetch('/api/register', {
+        var res = await fetch('/api/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -63,26 +114,28 @@ async function register(e) {
                 password: document.getElementById('reg-password').value
             })
         });
-        const data = await res.json();
+        var data = await res.json();
         if (data.success) {
-            toast(`Account created! ID: #${data.odilId}`);
-            setTimeout(() => location.href = '/home', 1000);
+            toast('Account created! ID: #' + data.odilId);
+            setTimeout(function () { location.href = '/home'; }, 1000);
         } else {
             toast(data.message, 'error');
         }
-    } catch { toast('Connection error', 'error'); }
+    } catch (err) {
+        toast('Connection error', 'error');
+    }
     btn.innerHTML = html;
     btn.disabled = false;
 }
 
 async function login(e) {
     e.preventDefault();
-    const btn = e.target.querySelector('button');
-    const html = btn.innerHTML;
+    var btn = e.target.querySelector('button');
+    var html = btn.innerHTML;
     btn.innerHTML = '<div class="loader"></div>';
     btn.disabled = true;
     try {
-        const res = await fetch('/api/login', {
+        var res = await fetch('/api/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -90,14 +143,16 @@ async function login(e) {
                 password: document.getElementById('login-password').value
             })
         });
-        const data = await res.json();
+        var data = await res.json();
         if (data.success) {
             toast('Welcome back');
-            setTimeout(() => location.href = '/home', 600);
+            setTimeout(function () { location.href = '/home'; }, 600);
         } else {
             toast(data.message, 'error');
         }
-    } catch { toast('Connection error', 'error'); }
+    } catch (err) {
+        toast('Connection error', 'error');
+    }
     btn.innerHTML = html;
     btn.disabled = false;
 }
@@ -107,256 +162,159 @@ async function logout() {
     location.href = '/';
 }
 
-// ============================================
-// User Data
-// ============================================
 async function loadUser() {
     try {
-        const res = await fetch('/api/user');
-        const data = await res.json();
+        var res = await fetch('/api/user');
+        var data = await res.json();
         if (data.success) {
             currentUser = data.user;
-            
-            document.querySelectorAll('.username').forEach(el => el.textContent = data.user.username);
-            document.querySelectorAll('.odil-id').forEach(el => el.textContent = `#${data.user.odilId}`);
-
-            const level = document.getElementById('user-level');
-            const coins = document.getElementById('user-coins');
-            const time = document.getElementById('user-playtime');
+            document.querySelectorAll('.username').forEach(function (el) { el.textContent = data.user.username; });
+            document.querySelectorAll('.odil-id').forEach(function (el) { el.textContent = '#' + data.user.odilId; });
+            var level = document.getElementById('user-level');
+            var coins = document.getElementById('user-coins');
+            var time = document.getElementById('user-playtime');
             if (level) level.textContent = data.user.gameData.level;
             if (coins) coins.textContent = data.user.gameData.coins;
             if (time) time.textContent = Math.floor(data.user.gameData.playTime / 60) + 'h';
         }
-    } catch (e) { console.error(e); }
+    } catch (err) {
+        console.error(err);
+    }
 }
 
-// ============================================
-// Games
-// ============================================
-function gameCardHTML(game, large = false) {
-    const placeholder = `
-        <div class="placeholder">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <rect x="2" y="6" width="20" height="12" rx="2"/>
-                <path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/>
-            </svg>
-        </div>
-    `;
-    
-    return `
-        <div class="game-card ${large ? 'large' : ''}" onclick="location.href='/game/${game.id}'">
-            <div class="game-card-image">
-                ${game.thumbnail ? `<img src="${game.thumbnail}" alt="${game.title}">` : placeholder}
-                <div class="game-card-players">
-                    <span class="dot"></span>
-                    <span>${game.activePlayers || 0} playing</span>
-                </div>
-            </div>
-            <div class="game-card-info">
-                <div class="game-card-title">${game.title}</div>
-                <div class="game-card-creator">by ${game.creator}</div>
-            </div>
-        </div>
-    `;
+function gameCardHTML(game, large) {
+    return '<div class="game-card ' + (large ? 'large' : '') + '" onclick="location.href=\'/game/' + game.id + '\'">' +
+        '<div class="game-card-image">' +
+            (game.thumbnail ? '<img src="' + game.thumbnail + '" alt="' + game.title + '">' : gamePlaceholder()) +
+            '<div class="game-card-players"><span class="dot"></span><span>' + (game.activePlayers || 0) + ' playing</span></div>' +
+        '</div>' +
+        '<div class="game-card-info">' +
+            '<div class="game-card-title">' + game.title + '</div>' +
+            '<div class="game-card-creator">by ' + game.creator + '</div>' +
+        '</div>' +
+    '</div>';
 }
 
 function featuredGameHTML(game) {
-    const placeholder = `
-        <div class="placeholder">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <rect x="2" y="6" width="20" height="12" rx="2"/>
-                <path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/>
-            </svg>
-        </div>
-    `;
-    
-    return `
-        <div class="featured-game" onclick="location.href='/game/${game.id}'">
-            <div class="featured-game-image">
-                ${game.thumbnail ? `<img src="${game.thumbnail}" alt="${game.title}">` : placeholder}
-            </div>
-            <div class="featured-game-info">
-                <div class="featured-game-badge">Featured</div>
-                <h3 class="featured-game-title">${game.title}</h3>
-                <p class="featured-game-desc">${game.description || 'No description'}</p>
-                <div class="featured-game-stats">
-                    <span><strong>${game.activePlayers || 0}</strong> playing</span>
-                    <span><strong>${formatNumber(game.visits || 0)}</strong> visits</span>
-                </div>
-                <button class="btn btn-primary" onclick="event.stopPropagation(); playGame('${game.id}')">
-                    <svg viewBox="0 0 24 24" fill="currentColor" style="width:18px;height:18px;">
-                        <polygon points="5 3 19 12 5 21 5 3"/>
-                    </svg>
-                    Play Now
-                </button>
-            </div>
-        </div>
-    `;
+    return '<div class="featured-game" onclick="location.href=\'/game/' + game.id + '\'">' +
+        '<div class="featured-game-image">' +
+            (game.thumbnail ? '<img src="' + game.thumbnail + '" alt="' + game.title + '">' : gamePlaceholder()) +
+        '</div>' +
+        '<div class="featured-game-info">' +
+            '<div class="featured-game-badge">Featured</div>' +
+            '<h3 class="featured-game-title">' + game.title + '</h3>' +
+            '<p class="featured-game-desc">' + (game.description || 'No description') + '</p>' +
+            '<div class="featured-game-stats">' +
+                '<span><strong>' + (game.activePlayers || 0) + '</strong> playing</span>' +
+                '<span><strong>' + formatNumber(game.visits || 0) + '</strong> visits</span>' +
+            '</div>' +
+            '<button class="btn btn-primary" onclick="event.stopPropagation(); playGame(\'' + game.id + '\')">' +
+                '<svg viewBox="0 0 24 24" fill="currentColor" style="width:18px;height:18px;"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play Now' +
+            '</button>' +
+        '</div>' +
+    '</div>';
 }
 
 async function loadFeaturedGame() {
-    const container = document.getElementById('featured-game');
+    var container = document.getElementById('featured-game');
     if (!container) return;
-    
     try {
-        const res = await fetch('/api/games?featured=true&limit=1');
-        const data = await res.json();
-        
+        var res = await fetch('/api/games?featured=true&limit=1');
+        var data = await res.json();
         if (data.success && data.games.length > 0) {
             container.innerHTML = featuredGameHTML(data.games[0]);
         } else {
             container.innerHTML = '<p class="no-content">No games available</p>';
         }
-    } catch (e) {
+    } catch (err) {
         container.innerHTML = '<p class="no-content">Error loading games</p>';
     }
 }
 
 async function loadAllGames() {
-    const container = document.getElementById('all-games');
+    var container = document.getElementById('all-games');
     if (!container) return;
-    
     try {
-        const res = await fetch('/api/games');
-        const data = await res.json();
-        
+        var res = await fetch('/api/games');
+        var data = await res.json();
         if (data.success && data.games.length > 0) {
-            container.innerHTML = data.games.map(g => gameCardHTML(g, true)).join('');
+            container.innerHTML = data.games.map(function (g) { return gameCardHTML(g, true); }).join('');
         } else {
             container.innerHTML = '<p class="no-content">No games available</p>';
         }
-    } catch (e) {
+    } catch (err) {
         container.innerHTML = '<p class="no-content">Error loading games</p>';
     }
 }
 
 async function loadGamePage() {
-    const container = document.getElementById('game-content');
+    var container = document.getElementById('game-content');
     if (!container) return;
-    
-    const gameId = location.pathname.split('/').pop();
-    
+    var gameId = location.pathname.split('/').pop();
     try {
-        const res = await fetch(`/api/game/${gameId}`);
-        const data = await res.json();
-        
+        var res = await fetch('/api/game/' + gameId);
+        var data = await res.json();
         if (data.success) {
-            const g = data.game;
-            const placeholder = `
-                <div class="placeholder">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <rect x="2" y="6" width="20" height="12" rx="2"/>
-                        <path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/>
-                    </svg>
-                </div>
-            `;
-            
-            container.innerHTML = `
-                <div class="game-hero">
-                    <div class="game-media">
-                        ${g.thumbnail ? `<img src="${g.thumbnail}" alt="${g.title}">` : placeholder}
-                    </div>
-                    <div class="game-sidebar">
-                        <div class="game-main-card">
-                            <h1 class="game-title">${g.title}</h1>
-                            <p class="game-creator">by <a href="/user/${g.creatorId}">${g.creator}</a></p>
-                            
-                            <div class="game-stats">
-                                <div class="game-stat">
-                                    <div class="game-stat-value">${g.activePlayers || 0}</div>
-                                    <div class="game-stat-label">Playing</div>
-                                </div>
-                                <div class="game-stat">
-                                    <div class="game-stat-value">${formatNumber(g.visits || 0)}</div>
-                                    <div class="game-stat-label">Visits</div>
-                                </div>
-                                <div class="game-stat">
-                                    <div class="game-stat-value">${g.maxPlayers || 50}</div>
-                                    <div class="game-stat-label">Max</div>
-                                </div>
-                            </div>
-                            
-                            <button class="btn btn-primary play-button" onclick="playGame('${g.id}')">
-                                <svg viewBox="0 0 24 24" fill="currentColor">
-                                    <polygon points="5 3 19 12 5 21 5 3"/>
-                                </svg>
-                                Play
-                            </button>
-                            
-                            <div class="game-actions">
-                                <button class="btn btn-secondary" onclick="openServersModal()">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
-                                        <rect x="2" y="3" width="20" height="14" rx="2"/>
-                                        <line x1="8" y1="21" x2="16" y2="21"/>
-                                        <line x1="12" y1="17" x2="12" y2="21"/>
-                                    </svg>
-                                    Servers
-                                </button>
-                                <button class="btn btn-secondary" onclick="shareGame('${g.id}')">
-                                    🔗 Share
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div class="game-description">
-                            <h3>About</h3>
-                            <p>${g.description || 'No description provided.'}</p>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            document.title = `TuBlox — ${g.title}`;
+            var g = data.game;
+            container.innerHTML =
+                '<div class="game-hero">' +
+                    '<div class="game-media">' +
+                        (g.thumbnail ? '<img src="' + g.thumbnail + '" alt="' + g.title + '">' : gamePlaceholder()) +
+                    '</div>' +
+                    '<div class="game-sidebar">' +
+                        '<div class="game-main-card">' +
+                            '<h1 class="game-title">' + g.title + '</h1>' +
+                            '<p class="game-creator">by <a href="/user/' + g.creatorId + '">' + g.creator + '</a></p>' +
+                            '<div class="game-stats">' +
+                                '<div class="game-stat"><div class="game-stat-value">' + (g.activePlayers || 0) + '</div><div class="game-stat-label">Playing</div></div>' +
+                                '<div class="game-stat"><div class="game-stat-value">' + formatNumber(g.visits || 0) + '</div><div class="game-stat-label">Visits</div></div>' +
+                                '<div class="game-stat"><div class="game-stat-value">' + (g.maxPlayers || 50) + '</div><div class="game-stat-label">Max</div></div>' +
+                            '</div>' +
+                            '<button class="btn btn-primary play-button" onclick="playGame(\'' + g.id + '\')">' +
+                                '<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play' +
+                            '</button>' +
+                            '<div class="game-actions">' +
+                                '<button class="btn btn-secondary" onclick="openServersModal()">' +
+                                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Servers' +
+                                '</button>' +
+                                '<button class="btn btn-secondary" onclick="shareGame(\'' + g.id + '\')">🔗 Share</button>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="game-description"><h3>About</h3><p>' + (g.description || 'No description provided.') + '</p></div>' +
+                    '</div>' +
+                '</div>';
+            document.title = 'TuBlox — ' + g.title;
         } else {
-            container.innerHTML = `
-                <div class="not-found">
-                    <h2>Game not found</h2>
-                    <a href="/games" class="btn btn-secondary">Browse Games</a>
-                </div>
-            `;
+            container.innerHTML = '<div class="not-found"><h2>Game not found</h2><a href="/games" class="btn btn-secondary">Browse Games</a></div>';
         }
-    } catch (e) {
+    } catch (err) {
         container.innerHTML = '<p class="error">Error loading game</p>';
     }
 }
 
-// ============================================
-// Play Game
-// ============================================
 function playGame(gameId) {
     if (!currentUser) {
         toast('Please log in to play', 'error');
-        setTimeout(() => { location.href = '/'; }, 1000);
+        setTimeout(function () { location.href = '/'; }, 1000);
         return;
     }
-    
     openPlayModal();
     launchGame(gameId);
 }
 
-// ============================================
-// Launch System
-// ============================================
 function setLaunchState(state) {
-    document.querySelectorAll('.launch-state').forEach(el => el.classList.remove('active'));
-    
-    const el = document.getElementById(`state-${state}`);
+    document.querySelectorAll('.launch-state').forEach(function (el) { el.classList.remove('active'); });
+    var el = document.getElementById('state-' + state);
     if (el) el.classList.add('active');
-    
-    const title = document.getElementById('modal-title');
+    var title = document.getElementById('modal-title');
     if (title) {
-        const titles = {
-            connecting: 'Launching Game',
-            success: 'Game Started',
-            notfound: 'Install Required',
-            error: 'Launch Failed'
-        };
+        var titles = { connecting: 'Launching Game', success: 'Game Started', notfound: 'Install Required', error: 'Launch Failed' };
         title.textContent = titles[state] || 'Launching Game';
     }
 }
 
 function openPlayModal() {
-    const modal = document.getElementById('play-modal');
+    var modal = document.getElementById('play-modal');
     if (modal) {
         modal.classList.add('active');
         setLaunchState('connecting');
@@ -364,9 +322,9 @@ function openPlayModal() {
 }
 
 function closePlayModal() {
-    const modal = document.getElementById('play-modal');
+    var modal = document.getElementById('play-modal');
     if (modal) modal.classList.remove('active');
-    setTimeout(() => setLaunchState('connecting'), 300);
+    setTimeout(function () { setLaunchState('connecting'); }, 300);
 }
 
 function retryLaunch() {
@@ -377,36 +335,35 @@ function retryLaunch() {
 }
 
 function detectClientLaunch(launchUrl) {
-    return new Promise((resolve) => {
-        let detected = false;
-        
-        const onBlur = () => {
+    return new Promise(function (resolve) {
+        var detected = false;
+
+        function onBlur() {
             if (!detected) {
                 detected = true;
                 cleanup();
                 resolve(true);
             }
-        };
-        
-        const onVisibility = () => {
+        }
+
+        function onVisibility() {
             if (document.hidden && !detected) {
                 detected = true;
                 cleanup();
                 resolve(true);
             }
-        };
-        
+        }
+
         function cleanup() {
             window.removeEventListener('blur', onBlur);
             document.removeEventListener('visibilitychange', onVisibility);
         }
-        
+
         window.addEventListener('blur', onBlur);
         document.addEventListener('visibilitychange', onVisibility);
-        
         window.location.href = launchUrl;
-        
-        setTimeout(() => {
+
+        setTimeout(function () {
             if (!detected) {
                 cleanup();
                 resolve(false);
@@ -417,39 +374,35 @@ function detectClientLaunch(launchUrl) {
 
 async function launchGame(gameId) {
     currentLaunchGameId = gameId;
-    
     try {
-        const res = await fetch('/api/game/launch', {
+        var res = await fetch('/api/game/launch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ gameId })
+            body: JSON.stringify({ gameId: gameId })
         });
-        const data = await res.json();
-        
+        var data = await res.json();
         if (!data.success) {
             setLaunchState('error');
-            const errMsg = document.getElementById('error-message');
+            var errMsg = document.getElementById('error-message');
             if (errMsg) errMsg.textContent = data.message || 'Failed to create launch session';
             return;
         }
-        
-        let gameName = data.gameName || 'TuBlox World';
-        let gameCreator = data.creatorName || '';
-        
+
+        var gameName = data.gameName || 'TuBlox World';
+        var gameCreator = data.creatorName || '';
+
         if (!gameName || gameName === 'TuBlox World') {
             try {
-                const gameRes = await fetch(`/api/game/${gameId}`);
-                const gameData = await gameRes.json();
+                var gameRes = await fetch('/api/game/' + gameId);
+                var gameData = await gameRes.json();
                 if (gameData.success && gameData.game) {
                     gameName = gameData.game.title || gameName;
                     gameCreator = gameData.game.creator || gameCreator;
                 }
-            } catch (e) {
-                console.warn('Could not fetch game info:', e);
-            }
+            } catch (e) { }
         }
-        
-        const launchData = {
+
+        var launchData = {
             username: currentUser.username,
             odilId: currentUser.odilId,
             host: data.wsHost || window.location.hostname || 'localhost',
@@ -461,47 +414,38 @@ async function launchGame(gameId) {
             description: data.description || '',
             maxPlayers: data.maxPlayers || 10
         };
-        
-        const jsonStr = JSON.stringify(launchData);
-        const base64 = btoa(unescape(encodeURIComponent(jsonStr)))
+
+        var base64 = btoa(unescape(encodeURIComponent(JSON.stringify(launchData))))
             .replace(/\+/g, '-')
             .replace(/\//g, '_')
             .replace(/=/g, '');
-        const launchUrl = 'tublox://play/' + base64;
-        
-        console.log('[Launch] URL:', launchUrl);
-        console.log('[Launch] Data:', launchData);
-        
-        const clientFound = await detectClientLaunch(launchUrl);
-        
+        var launchUrl = 'tublox://play/' + base64;
+
+        var clientFound = await detectClientLaunch(launchUrl);
+
         if (clientFound) {
             setLaunchState('success');
-            setTimeout(() => {
+            setTimeout(function () {
                 closePlayModal();
                 toast('Game launched!');
             }, 3000);
         } else {
             setLaunchState('notfound');
         }
-        
     } catch (e) {
-        console.error('Launch error:', e);
         setLaunchState('error');
-        const errMsg = document.getElementById('error-message');
-        if (errMsg) errMsg.textContent = 'Connection error. Please try again.';
+        var errEl = document.getElementById('error-message');
+        if (errEl) errEl.textContent = 'Connection error. Please try again.';
     }
 }
 
 function shareGame(gameId) {
-    navigator.clipboard.writeText(`${location.origin}/game/${gameId}`);
+    navigator.clipboard.writeText(location.origin + '/game/' + gameId);
     toast('Link copied!');
 }
 
-// ============================================
-// Servers Modal
-// ============================================
 function openServersModal() {
-    const modal = document.getElementById('servers-modal');
+    var modal = document.getElementById('servers-modal');
     if (modal) {
         modal.classList.add('active');
         loadGameServers();
@@ -509,116 +453,70 @@ function openServersModal() {
 }
 
 function closeServersModal() {
-    const modal = document.getElementById('servers-modal');
+    var modal = document.getElementById('servers-modal');
     if (modal) modal.classList.remove('active');
 }
 
 async function loadGameServers() {
-    const body = document.getElementById('servers-body');
+    var body = document.getElementById('servers-body');
     if (!body) return;
-
-    const gameId = location.pathname.split('/').pop();
-
-    body.innerHTML = `
-        <div class="servers-loading">
-            <div class="spinner"></div>
-            <p>Loading servers...</p>
-        </div>
-    `;
+    var gameId = location.pathname.split('/').pop();
+    body.innerHTML = '<div class="servers-loading"><div class="spinner"></div><p>Loading servers...</p></div>';
 
     try {
-        const res = await fetch(`/api/game/${gameId}/servers`);
-        const data = await res.json();
-
-        if (!data.success) {
-            throw new Error(data.message);
-        }
-
+        var res = await fetch('/api/game/' + gameId + '/servers');
+        var data = await res.json();
+        if (!data.success) throw new Error(data.message);
         currentGameServers = data.servers || [];
 
         if (currentGameServers.length === 0) {
-            body.innerHTML = `
-                <div class="servers-empty">
-                    <div class="servers-empty-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <rect x="2" y="3" width="20" height="14" rx="2"/>
-                            <line x1="8" y1="21" x2="16" y2="21"/>
-                            <line x1="12" y1="17" x2="12" y2="21"/>
-                        </svg>
-                    </div>
-                    <h4>No Active Servers</h4>
-                    <p>Be the first to play! Click Play to start a new server.</p>
-                    <button class="btn btn-primary" onclick="closeServersModal(); playGame('${gameId}')">
-                        <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;">
-                            <polygon points="5 3 19 12 5 21 5 3"/>
-                        </svg>
-                        Start Playing
-                    </button>
-                </div>
-            `;
+            body.innerHTML =
+                '<div class="servers-empty">' +
+                    '<div class="servers-empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>' +
+                    '<h4>No Active Servers</h4>' +
+                    '<p>Be the first to play! Click Play to start a new server.</p>' +
+                    '<button class="btn btn-primary" onclick="closeServersModal(); playGame(\'' + gameId + '\')">' +
+                        '<svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start Playing' +
+                    '</button>' +
+                '</div>';
             return;
         }
 
-        let html = `
-            <div class="servers-refresh">
-                <span class="servers-count">${currentGameServers.length} server${currentGameServers.length !== 1 ? 's' : ''} found</span>
-                <button class="btn btn-secondary btn-refresh" onclick="loadGameServers()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M23 4v6h-6"/>
-                        <path d="M1 20v-6h6"/>
-                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/>
-                        <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/>
-                    </svg>
-                    Refresh
-                </button>
-            </div>
-            <div class="servers-list">
-        `;
+        var html =
+            '<div class="servers-refresh">' +
+                '<span class="servers-count">' + currentGameServers.length + ' server' + (currentGameServers.length !== 1 ? 's' : '') + ' found</span>' +
+                '<button class="btn btn-secondary btn-refresh" onclick="loadGameServers()">' +
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg> Refresh' +
+                '</button>' +
+            '</div>' +
+            '<div class="servers-list">';
 
-        for (const server of currentGameServers) {
-            html += `
-                <div class="server-item" onclick="joinServer('${server.id}')">
-                    <div class="server-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <rect x="2" y="3" width="20" height="14" rx="2"/>
-                            <line x1="8" y1="21" x2="16" y2="21"/>
-                            <line x1="12" y1="17" x2="12" y2="21"/>
-                        </svg>
-                    </div>
-                    <div class="server-info">
-                        <div class="server-name">${escapeHtml(server.name)}</div>
-                        <div class="server-meta">
-                            <span class="server-players">
-                                <span class="dot"></span>
-                                ${server.players}/${server.maxPlayers} players
-                            </span>
-                            ${server.ping ? `<span class="server-ping">${server.ping}ms</span>` : ''}
-                        </div>
-                    </div>
-                    <button class="btn btn-primary server-join-btn">Join</button>
-                </div>
-            `;
+        for (var i = 0; i < currentGameServers.length; i++) {
+            var server = currentGameServers[i];
+            html +=
+                '<div class="server-item" onclick="joinServer(\'' + server.id + '\')">' +
+                    '<div class="server-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>' +
+                    '<div class="server-info">' +
+                        '<div class="server-name">' + escapeHtml(server.name) + '</div>' +
+                        '<div class="server-meta">' +
+                            '<span class="server-players"><span class="dot"></span>' + server.players + '/' + server.maxPlayers + ' players</span>' +
+                            (server.ping ? '<span class="server-ping">' + server.ping + 'ms</span>' : '') +
+                        '</div>' +
+                    '</div>' +
+                    '<button class="btn btn-primary server-join-btn">Join</button>' +
+                '</div>';
         }
 
         html += '</div>';
         body.innerHTML = html;
-
     } catch (err) {
-        console.error('Load servers error:', err);
-        body.innerHTML = `
-            <div class="servers-empty">
-                <div class="servers-empty-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="12" y1="8" x2="12" y2="12"/>
-                        <line x1="12" y1="16" x2="12.01" y2="16"/>
-                    </svg>
-                </div>
-                <h4>Failed to Load</h4>
-                <p>Could not load server list. Please try again.</p>
-                <button class="btn btn-secondary" onclick="loadGameServers()">Retry</button>
-            </div>
-        `;
+        body.innerHTML =
+            '<div class="servers-empty">' +
+                '<div class="servers-empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>' +
+                '<h4>Failed to Load</h4>' +
+                '<p>Could not load server list. Please try again.</p>' +
+                '<button class="btn btn-secondary" onclick="loadGameServers()">Retry</button>' +
+            '</div>';
     }
 }
 
@@ -627,394 +525,184 @@ function joinServer(serverId) {
     playGame(serverId);
 }
 
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// ============================================
-// Users
-// ============================================
 async function loadUsers() {
-    const grid = document.getElementById('users-grid');
+    var grid = document.getElementById('users-grid');
     if (!grid) return;
-    
     try {
-        const res = await fetch('/api/users');
-        const data = await res.json();
-        
+        var res = await fetch('/api/users');
+        var data = await res.json();
         if (data.success && data.users.length > 0) {
-            grid.innerHTML = data.users.map(u => {
-                const statusClass = u.currentGame ? 'in-game' : (u.isOnline ? 'online' : 'offline');
-                return `
-                    <div class="user-card" onclick="location.href='/user/${u.odilId}'">
-                        <div class="user-avatar">
-                            <span class="user-status-dot ${statusClass}"></span>
-                        </div>
-                        <div class="user-info">
-                            <div class="user-name">${escapeHtml(u.username)}</div>
-                            <div class="user-id">#${u.odilId}</div>
-                        </div>
-                        <div class="user-level">Lv.${u.gameData.level}</div>
-                    </div>
-                `;
+            grid.innerHTML = data.users.map(function (u) {
+                var statusClass = u.currentGame ? 'in-game' : (u.isOnline ? 'online' : 'offline');
+                return '<div class="user-card" onclick="location.href=\'/user/' + u.odilId + '\'">' +
+                    '<div class="user-avatar"><span class="user-status-dot ' + statusClass + '"></span></div>' +
+                    '<div class="user-info"><div class="user-name">' + escapeHtml(u.username) + '</div><div class="user-id">#' + u.odilId + '</div></div>' +
+                    '<div class="user-level">Lv.' + u.gameData.level + '</div>' +
+                '</div>';
             }).join('');
         } else {
             grid.innerHTML = '<p class="no-content">No players yet</p>';
         }
-    } catch (e) {
+    } catch (err) {
         grid.innerHTML = '<p class="no-content">Error loading</p>';
     }
 }
 
-// ============================================
-// Profile
-// ============================================
-
-let profileRefreshInterval = null;
-
-function formatDate(dateStr) {
-    if (!dateStr) return 'Unknown';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return 'Unknown';
-    
-    const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                    'July', 'August', 'September', 'October', 'November', 'December'];
-    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-}
-
-function formatLastSeen(dateStr) {
-    if (!dateStr) return 'Unknown';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return 'Unknown';
-    
-    const now = new Date();
-    const diffMs = now - d;
-    const diffSec = Math.floor(diffMs / 1000);
-    const diffMin = Math.floor(diffSec / 60);
-    const diffHour = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHour / 24);
-    
-    if (diffSec < 30) return 'Just now';
-    if (diffMin < 1) return 'Less than a minute ago';
-    if (diffMin < 60) return `${diffMin} minute${diffMin !== 1 ? 's' : ''} ago`;
-    if (diffHour < 24) return `${diffHour} hour${diffHour !== 1 ? 's' : ''} ago`;
-    if (diffDay < 7) return `${diffDay} day${diffDay !== 1 ? 's' : ''} ago`;
-    
-    return formatDate(dateStr);
-}
-
 function buildProfileHTML(u) {
-    // Status badge
-    let statusHtml = '';
+    var statusHtml;
     if (u.currentGame) {
-        statusHtml = `
-            <div class="profile-status in-game">
-                <span class="status-dot"></span>
-                In Game
-            </div>
-        `;
+        statusHtml = '<div class="profile-status in-game"><span class="status-dot"></span>In Game</div>';
     } else if (u.isOnline) {
-        statusHtml = `
-            <div class="profile-status online">
-                <span class="status-dot"></span>
-                Online
-            </div>
-        `;
+        statusHtml = '<div class="profile-status online"><span class="status-dot"></span>Online</div>';
     } else {
-        statusHtml = `
-            <div class="profile-status offline">
-                <span class="status-dot"></span>
-                Offline
-            </div>
-        `;
+        statusHtml = '<div class="profile-status offline"><span class="status-dot"></span>Offline</div>';
     }
-    
-    // Last seen (only if offline)
-    let lastSeenHtml = '';
+
+    var lastSeenHtml = '';
     if (!u.isOnline && u.lastSeen) {
-        lastSeenHtml = `
-            <div class="profile-last-seen">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <polyline points="12 6 12 12 16 14"/>
-                </svg>
-                Last seen ${formatLastSeen(u.lastSeen)}
-            </div>
-        `;
+        lastSeenHtml = '<div class="profile-last-seen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Last seen ' + formatLastSeen(u.lastSeen) + '</div>';
     }
-    
-    // Currently playing card
-    let playingHtml = '';
+
+    var playingHtml = '';
     if (u.currentGame) {
-        const game = u.currentGame;
-        playingHtml = `
-            <div class="profile-playing">
-                <div class="profile-playing-thumb">
-                    ${game.thumbnail 
-                        ? `<img src="${escapeHtml(game.thumbnail)}" alt="${escapeHtml(game.title || 'Game')}">` 
-                        : `<div class="placeholder-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <rect x="2" y="6" width="20" height="12" rx="2"/>
-                                <path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/>
-                            </svg>
-                        </div>`
-                    }
-                </div>
-                <div class="profile-playing-info">
-                    <div class="profile-playing-label">
-                        <span class="playing-dot"></span>
-                        Currently Playing
-                    </div>
-                    <div class="profile-playing-name">${escapeHtml(game.title || 'Unknown Game')}</div>
-                </div>
-                <div class="profile-playing-join">
-                    <button class="btn btn-blue btn-sm" onclick="joinPlayerGame('${escapeHtml(game.gameId || game.serverId || '')}')">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
-                            <polygon points="5 3 19 12 5 21 5 3"/>
-                        </svg>
-                        Join
-                    </button>
-                </div>
-            </div>
-        `;
+        var game = u.currentGame;
+        var thumbHtml;
+        if (game.thumbnail) {
+            thumbHtml = '<img src="' + escapeHtml(game.thumbnail) + '" alt="' + escapeHtml(game.title || 'Game') + '">';
+        } else {
+            thumbHtml = '<div class="placeholder-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/></svg></div>';
+        }
+        playingHtml =
+            '<div class="profile-playing">' +
+                '<div class="profile-playing-thumb">' + thumbHtml + '</div>' +
+                '<div class="profile-playing-info">' +
+                    '<div class="profile-playing-label"><span class="playing-dot"></span>Currently Playing</div>' +
+                    '<div class="profile-playing-name">' + escapeHtml(game.title || 'Unknown Game') + '</div>' +
+                '</div>' +
+                '<div class="profile-playing-join">' +
+                    '<button class="btn btn-blue btn-sm" onclick="joinPlayerGame(\'' + escapeHtml(game.gameId || game.serverId || '') + '\')">' +
+                        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polygon points="5 3 19 12 5 21 5 3"/></svg> Join' +
+                    '</button>' +
+                '</div>' +
+            '</div>';
     }
-    
-    return `
-        <div class="profile-header">
-            <div class="profile-avatar"></div>
-            <h1 class="profile-name">${escapeHtml(u.username)}</h1>
-            <div class="profile-id">#${u.odilId}</div>
-            ${statusHtml}
-            ${lastSeenHtml}
-        </div>
-        
-        ${playingHtml}
-        
-        <div class="profile-joined">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                <line x1="16" y1="2" x2="16" y2="6"/>
-                <line x1="8" y1="2" x2="8" y2="6"/>
-                <line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-            Joined ${formatDate(u.createdAt)}
-        </div>
-    `;
+
+    return '<div class="profile-header">' +
+        '<div class="profile-avatar"></div>' +
+        '<h1 class="profile-name">' + escapeHtml(u.username) + '</h1>' +
+        '<div class="profile-id">#' + u.odilId + '</div>' +
+        statusHtml +
+        lastSeenHtml +
+    '</div>' +
+    playingHtml +
+    '<div class="profile-joined">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' +
+        'Joined ' + formatDate(u.createdAt) +
+    '</div>';
 }
 
 async function loadProfile() {
-    const content = document.getElementById('profile-content');
+    var content = document.getElementById('profile-content');
     if (!content) return;
-    
-    const id = location.pathname.split('/').pop();
-    
-    // Show loading
-    content.innerHTML = `
-        <div class="loading-placeholder large">
-            <div class="spinner"></div>
-        </div>
-    `;
-    
+    var id = location.pathname.split('/').pop();
+    content.innerHTML = '<div class="loading-placeholder large"><div class="spinner"></div></div>';
+
     try {
-        const res = await fetch(`/api/user/${id}`);
-        const data = await res.json();
-        
+        var res = await fetch('/api/user/' + id);
+        var data = await res.json();
         if (data.success) {
             content.innerHTML = buildProfileHTML(data.user);
             startProfileRefresh(id);
         } else {
-            content.innerHTML = `
-                <div class="profile-not-found">
-                    <h2>User not found</h2>
-                    <p>This player doesn't exist.</p>
-                    <a href="/users" class="btn btn-secondary">Browse Players</a>
-                </div>
-            `;
+            content.innerHTML = '<div class="profile-not-found"><h2>User not found</h2><p>This player doesn\'t exist.</p><a href="/users" class="btn btn-secondary">Browse Players</a></div>';
         }
-    } catch (e) {
+    } catch (err) {
         content.innerHTML = '<p class="error">Error loading profile</p>';
     }
 }
 
-// ============================================
-// Footer
-// ============================================
-function createFooter() {
-    // Не добавлять футер на страницы авторизации и countdown
-    if (document.querySelector('.auth-page') || document.querySelector('.countdown-page')) {
-        return;
-    }
-    
-    const footer = document.createElement('footer');
-    footer.className = 'site-footer';
-    footer.innerHTML = `
-        <div class="footer-inner">
-            <!-- Whitelist CTA -->
-            <div class="footer-cta">
-                <a href="/whitelist" class="btn btn-primary btn-lg">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    </svg>
-                    Whitelist Now
-                </a>
-            </div>
-            
-            <div class="footer-main">
-                <div class="footer-brand">
-                    <a href="/home" class="logo">
-                        <img src="/img/logo.svg" alt="TuBlox">
-                        <span>TuBlox</span>
-                    </a>
-                    <p class="footer-copyright">© 2025-2026 TuBlox</p>
-                </div>
-                
-                <div class="footer-links">
-                    <div class="footer-column">
-                        <h4>Navigation</h4>
-                        <ul>
-                            <li><a href="/home">Home</a></li>
-                            <li><a href="/games">Games</a></li>
-                            <li><a href="/users">Users</a></li>
-                            <li><a href="/TuForums">TuForums</a></li>
-                        </ul>
-                    </div>
-                    
-                    <div class="footer-column">
-                        <h4>Social</h4>
-                        <ul>
-                            <li>
-                                <a href="https://discord.gg/fRRQy7pAHY" target="_blank" rel="noopener noreferrer">
-                                    <svg viewBox="0 0 24 24" fill="currentColor" class="footer-icon">
-                                        <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
-                                    </svg>
-                                    Discord
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="footer-bottom">
-                <p>Made with ❤️ for the TuBlox community</p>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(footer);
-}
 function startProfileRefresh(userId) {
     stopProfileRefresh();
-    
-    profileRefreshInterval = setInterval(async () => {
+    profileRefreshInterval = setInterval(async function () {
         try {
-            const res = await fetch(`/api/user/${userId}`);
-            const data = await res.json();
-            
+            var res = await fetch('/api/user/' + userId);
+            var data = await res.json();
             if (!data.success) return;
-            
-            const u = data.user;
-            
-            // Update status badge
-            const statusEl = document.querySelector('.profile-status');
+            var u = data.user;
+
+            var statusEl = document.querySelector('.profile-status');
             if (statusEl) {
-                let newClass = 'profile-status';
-                let newContent = '';
-                
+                var cls = 'profile-status';
+                var inner = '';
                 if (u.currentGame) {
-                    newClass += ' in-game';
-                    newContent = '<span class="status-dot"></span>In Game';
+                    cls += ' in-game';
+                    inner = '<span class="status-dot"></span>In Game';
                 } else if (u.isOnline) {
-                    newClass += ' online';
-                    newContent = '<span class="status-dot"></span>Online';
+                    cls += ' online';
+                    inner = '<span class="status-dot"></span>Online';
                 } else {
-                    newClass += ' offline';
-                    newContent = '<span class="status-dot"></span>Offline';
+                    cls += ' offline';
+                    inner = '<span class="status-dot"></span>Offline';
                 }
-                
-                statusEl.className = newClass;
-                statusEl.innerHTML = newContent;
+                statusEl.className = cls;
+                statusEl.innerHTML = inner;
             }
-            
-            // Update last seen
-            const lastSeenEl = document.querySelector('.profile-last-seen');
+
+            var lastSeenEl = document.querySelector('.profile-last-seen');
             if (!u.isOnline && u.lastSeen) {
-                const newHtml = `
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                    Last seen ${formatLastSeen(u.lastSeen)}
-                `;
+                var lsHtml = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Last seen ' + formatLastSeen(u.lastSeen);
                 if (lastSeenEl) {
-                    lastSeenEl.innerHTML = newHtml;
+                    lastSeenEl.innerHTML = lsHtml;
                 } else {
-                    const header = document.querySelector('.profile-header');
+                    var header = document.querySelector('.profile-header');
                     if (header) {
-                        const div = document.createElement('div');
+                        var div = document.createElement('div');
                         div.className = 'profile-last-seen';
-                        div.innerHTML = newHtml;
+                        div.innerHTML = lsHtml;
                         header.appendChild(div);
                     }
                 }
             } else if (lastSeenEl) {
                 lastSeenEl.remove();
             }
-            
-            // Update playing card
-            const playingEl = document.querySelector('.profile-playing');
+
+            var playingEl = document.querySelector('.profile-playing');
             if (u.currentGame) {
-                const game = u.currentGame;
-                const playingHtml = `
-                    <div class="profile-playing-thumb">
-                        ${game.thumbnail 
-                            ? `<img src="${escapeHtml(game.thumbnail)}" alt="${escapeHtml(game.title || 'Game')}">` 
-                            : `<div class="placeholder-icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                    <rect x="2" y="6" width="20" height="12" rx="2"/>
-                                    <path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/>
-                                </svg>
-                            </div>`
-                        }
-                    </div>
-                    <div class="profile-playing-info">
-                        <div class="profile-playing-label">
-                            <span class="playing-dot"></span>
-                            Currently Playing
-                        </div>
-                        <div class="profile-playing-name">${escapeHtml(game.title || 'Unknown Game')}</div>
-                    </div>
-                    <div class="profile-playing-join">
-                        <button class="btn btn-blue btn-sm" onclick="joinPlayerGame('${escapeHtml(game.gameId || game.serverId || '')}')">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
-                                <polygon points="5 3 19 12 5 21 5 3"/>
-                            </svg>
-                            Join
-                        </button>
-                    </div>
-                `;
-                
-                if (playingEl) {
-                    playingEl.innerHTML = playingHtml;
+                var game = u.currentGame;
+                var thumbContent;
+                if (game.thumbnail) {
+                    thumbContent = '<img src="' + escapeHtml(game.thumbnail) + '" alt="' + escapeHtml(game.title || 'Game') + '">';
                 } else {
-                    const header = document.querySelector('.profile-header');
-                    if (header) {
-                        const div = document.createElement('div');
-                        div.className = 'profile-playing';
-                        div.innerHTML = playingHtml;
-                        header.insertAdjacentElement('afterend', div);
+                    thumbContent = '<div class="placeholder-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/></svg></div>';
+                }
+                var ph =
+                    '<div class="profile-playing-thumb">' + thumbContent + '</div>' +
+                    '<div class="profile-playing-info">' +
+                        '<div class="profile-playing-label"><span class="playing-dot"></span>Currently Playing</div>' +
+                        '<div class="profile-playing-name">' + escapeHtml(game.title || 'Unknown Game') + '</div>' +
+                    '</div>' +
+                    '<div class="profile-playing-join">' +
+                        '<button class="btn btn-blue btn-sm" onclick="joinPlayerGame(\'' + escapeHtml(game.gameId || game.serverId || '') + '\')">' +
+                            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polygon points="5 3 19 12 5 21 5 3"/></svg> Join' +
+                        '</button>' +
+                    '</div>';
+
+                if (playingEl) {
+                    playingEl.innerHTML = ph;
+                } else {
+                    var hdr = document.querySelector('.profile-header');
+                    if (hdr) {
+                        var d = document.createElement('div');
+                        d.className = 'profile-playing';
+                        d.innerHTML = ph;
+                        hdr.insertAdjacentElement('afterend', d);
                     }
                 }
             } else if (playingEl) {
                 playingEl.remove();
             }
-            
-        } catch (e) {
-            // ignore refresh errors
-        }
-    }, 5000); // Refresh every 5 seconds
+        } catch (e) { }
+    }, 5000);
 }
 
 function stopProfileRefresh() {
@@ -1032,36 +720,13 @@ function joinPlayerGame(gameId) {
     playGame(gameId);
 }
 
-// ============================================
-// Helpers
-// ============================================
-function formatNumber(n) {
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-    return n.toString();
-}
-
-// ============================================
-// Heartbeat - keep online status
-// ============================================
-
-let heartbeatInterval = null;
-
 async function sendHeartbeat() {
-    try {
-        await fetch('/api/heartbeat', { method: 'POST' });
-    } catch (e) {
-        // ignore
-    }
+    try { await fetch('/api/heartbeat', { method: 'POST' }); } catch (e) { }
 }
 
 function startHeartbeat() {
     if (heartbeatInterval) return;
-    
-    // Send immediately
     sendHeartbeat();
-    
-    // Then every 20 seconds
     heartbeatInterval = setInterval(sendHeartbeat, 20000);
 }
 
@@ -1072,80 +737,119 @@ function stopHeartbeat() {
     }
 }
 
+function createFooter() {
+    if (document.querySelector('.auth-page') || document.querySelector('.countdown-page')) return;
+    var footer = document.createElement('footer');
+    footer.className = 'site-footer';
+    footer.innerHTML =
+        '<div class="footer-inner">' +
+            '<div class="footer-cta">' +
+                '<a href="/whitelist" class="btn btn-primary btn-lg">' +
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Whitelist Now' +
+                '</a>' +
+            '</div>' +
+            '<div class="footer-main">' +
+                '<div class="footer-brand">' +
+                    '<a href="/home" class="logo"><img src="/img/logo.svg" alt="TuBlox"><span>TuBlox</span></a>' +
+                    '<p class="footer-copyright">© 2025-2026 TuBlox</p>' +
+                '</div>' +
+                '<div class="footer-links">' +
+                    '<div class="footer-column">' +
+                        '<h4>Navigation</h4>' +
+                        '<ul>' +
+                            '<li><a href="/home">Home</a></li>' +
+                            '<li><a href="/games">Games</a></li>' +
+                            '<li><a href="/users">Users</a></li>' +
+                            '<li><a href="/TuForums">TuForums</a></li>' +
+                        '</ul>' +
+                    '</div>' +
+                    '<div class="footer-column">' +
+                        '<h4>Social</h4>' +
+                        '<ul>' +
+                            '<li>' +
+                                '<a href="https://discord.gg/fRRQy7pAHY" target="_blank" rel="noopener noreferrer">' +
+                                    '<svg viewBox="0 0 24 24" fill="currentColor" class="footer-icon"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>' +
+                                    ' Discord' +
+                                '</a>' +
+                            '</li>' +
+                        '</ul>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="footer-bottom"><p>Made with ❤️ for the TuBlox community</p></div>' +
+        '</div>';
+    document.body.appendChild(footer);
+}
 
-// ============================================
-// Init
-// ============================================
-document.addEventListener('DOMContentLoaded', () => {
-    // Start heartbeat on any page
+document.addEventListener('DOMContentLoaded', function () {
     startHeartbeat();
     createFooter();
-    
+
     if (document.querySelector('.auth-tabs')) {
         initTabs();
-        document.getElementById('register-form')?.addEventListener('submit', register);
-        document.getElementById('login-form')?.addEventListener('submit', login);
+        var regForm = document.getElementById('register-form');
+        if (regForm) regForm.addEventListener('submit', register);
+        var logForm = document.getElementById('login-form');
+        if (logForm) logForm.addEventListener('submit', login);
     }
-    
-    if (document.querySelector('.home-page')) { 
-        loadUser(); 
-        loadFeaturedGame(); 
-        document.getElementById('logout-btn')?.addEventListener('click', logout); 
+
+    if (document.querySelector('.home-page')) {
+        loadUser();
+        loadFeaturedGame();
+        var logoutBtn = document.getElementById('logout-btn');
+        if (logoutBtn) logoutBtn.addEventListener('click', logout);
     }
-    
-    if (document.querySelector('.games-page')) { 
-        loadUser(); 
-        loadAllGames(); 
-        document.getElementById('logout-btn')?.addEventListener('click', logout); 
+
+    if (document.querySelector('.games-page')) {
+        loadUser();
+        loadAllGames();
+        var logoutBtn2 = document.getElementById('logout-btn');
+        if (logoutBtn2) logoutBtn2.addEventListener('click', logout);
     }
-    
-    if (document.querySelector('.game-page')) { 
-        loadUser(); 
-        loadGamePage(); 
-        document.getElementById('logout-btn')?.addEventListener('click', logout); 
+
+    if (document.querySelector('.game-page')) {
+        loadUser();
+        loadGamePage();
+        var logoutBtn3 = document.getElementById('logout-btn');
+        if (logoutBtn3) logoutBtn3.addEventListener('click', logout);
     }
-    
-    if (document.querySelector('.users-page')) { 
-        loadUser(); 
-        loadUsers(); 
+
+    if (document.querySelector('.users-page')) {
+        loadUser();
+        loadUsers();
     }
-    
-    if (document.querySelector('.profile-page')) { 
-        loadUser(); 
-        loadProfile(); 
+
+    if (document.querySelector('.profile-page')) {
+        loadUser();
+        loadProfile();
     }
-    
-    if (document.querySelector('.forum-page')) { 
-        loadUser(); 
-        document.getElementById('logout-btn')?.addEventListener('click', logout); 
+
+    if (document.querySelector('.forum-page')) {
+        loadUser();
+        var logoutBtn4 = document.getElementById('logout-btn');
+        if (logoutBtn4) logoutBtn4.addEventListener('click', logout);
     }
-    
-    document.querySelectorAll('.modal-backdrop').forEach(el => {
-        el.onclick = () => el.closest('.modal')?.classList.remove('active');
+
+    document.querySelectorAll('.modal-backdrop').forEach(function (el) {
+        el.onclick = function () {
+            var modal = el.closest('.modal');
+            if (modal) modal.classList.remove('active');
+        };
     });
-    
-    const disconnectBtn = document.getElementById('hud-disconnect');
-    if (disconnectBtn) {
-        disconnectBtn.addEventListener('click', disconnectGame);
-    }
+
+    var disconnectBtn = document.getElementById('hud-disconnect');
+    if (disconnectBtn) disconnectBtn.addEventListener('click', disconnectGame);
 });
 
-// Visibility change - send heartbeat when user returns
-document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-        sendHeartbeat();
-    }
+document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) sendHeartbeat();
 });
 
-// Cleanup on page unload
-window.addEventListener('beforeunload', () => {
+window.addEventListener('beforeunload', function () {
     stopHeartbeat();
     stopProfileRefresh();
 });
 
-// ============================================
-// Expose functions to global scope
-// ============================================
 window.playGame = playGame;
 window.shareGame = shareGame;
 window.openServersModal = openServersModal;

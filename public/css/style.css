@@ -80,11 +80,6 @@ a {
 ::-webkit-scrollbar-thumb:hover {
     background: var(--gray-dark);
 }
-
-/* ============================================
-   LOGO
-   ============================================ */
-
 .logo {
     display: flex;
     align-items: center;
@@ -94,7 +89,7 @@ a {
 .logo img {
     width: 42px;
     height: 42px;
-    transition: transform var(--transition);
+    transition: transform 0.2s ease;
 }
 
 .logo:hover img {
@@ -106,8 +101,8 @@ a {
     font-size: 23px;
     font-weight: 700;
     letter-spacing: -0.3px;
+    color: #fff;
 }
-
 /* ============================================
    BUTTONS
    ============================================ */

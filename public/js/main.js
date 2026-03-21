@@ -700,24 +700,7 @@ function startProfileRefresh(userId) {
                 statusEl.innerHTML = inner;
             }
 
-            // Update last seen
-            var lastSeenEl = document.querySelector('.profile-last-seen');
-            if (!u.isOnline && u.lastSeen) {
-                var lsHtml = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Last seen ' + formatLastSeen(u.lastSeen);
-                if (lastSeenEl) {
-                    lastSeenEl.innerHTML = lsHtml;
-                } else {
-                    var header = document.querySelector('.profile-header');
-                    if (header) {
-                        var div = document.createElement('div');
-                        div.className = 'profile-last-seen';
-                        div.innerHTML = lsHtml;
-                        header.appendChild(div);
-                    }
-                }
-            } else if (lastSeenEl) {
-                lastSeenEl.remove();
-            }
+
 
             // Update playing
             var playingEl = document.querySelector('.profile-playing');

@@ -6,17 +6,50 @@ let currentGameServers = [];
 let heartbeatInterval = null;
 let profileRefreshInterval = null;
 
+// ============================================
+// BADGE TOOLTIP CSS (injected once)
+// ============================================
+
+function injectBadgeStyles() {
+    if (document.getElementById('badge-extra-css')) return;
+    var style = document.createElement('style');
+    style.id = 'badge-extra-css';
+    style.textContent =
+        '.profile-badge{position:relative;cursor:pointer;transition:transform .2s;}' +
+        '.profile-badge:hover{transform:scale(1.15);}' +
+        '.profile-badge .profile-badge-img{width:52px;height:52px;background-size:contain;background-repeat:no-repeat;background-position:center;border-radius:10px;transition:box-shadow .2s;}' +
+        '.profile-badge:hover .profile-badge-img{box-shadow:0 0 12px rgba(255,255,255,.25);}' +
+        '.profile-badge::after{content:attr(data-tooltip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%) scale(.9);background:rgba(0,0,0,.88);color:#fff;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:600;letter-spacing:.3px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .2s,transform .2s;z-index:50;backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.1);}' +
+        '.profile-badge:hover::after{opacity:1;transform:translateX(-50%) scale(1);}' +
+        '.profile-badge::before{content:"";position:absolute;bottom:calc(100% + 2px);left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:rgba(0,0,0,.88);opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;}' +
+        '.profile-badge:hover::before{opacity:1;}' +
+        '.profile-avatar-badges{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:8px;}';
+    document.head.appendChild(style);
+}
+
+function getBadgeTooltip(badgeId) {
+    var map = {
+        'Staff': 'Staff',
+        'TuBloxUser': 'User'
+    };
+    return map[badgeId] || badgeId;
+}
+
+// ============================================
+// UTILS
+// ============================================
+
 (function setFavicon() {
-    const existing = document.querySelector('link[rel="icon"]');
+    var existing = document.querySelector('link[rel="icon"]');
     if (existing) existing.remove();
-    const link = document.createElement('link');
+    var link = document.createElement('link');
     link.rel = 'icon';
     link.type = 'image/svg+xml';
     link.href = '/img/logo.svg';
     document.head.appendChild(link);
-    const apple = document.querySelector('link[rel="apple-touch-icon"]');
+    var apple = document.querySelector('link[rel="apple-touch-icon"]');
     if (apple) apple.remove();
-    const appleLink = document.createElement('link');
+    var appleLink = document.createElement('link');
     appleLink.rel = 'apple-touch-icon';
     appleLink.href = '/img/logo.svg';
     document.head.appendChild(appleLink);
@@ -24,7 +57,7 @@ let profileRefreshInterval = null;
 
 function toast(msg, type) {
     type = type || 'success';
-    let c = document.querySelector('.toast-container');
+    var c = document.querySelector('.toast-container');
     if (!c) {
         c = document.createElement('div');
         c.className = 'toast-container';
@@ -70,6 +103,10 @@ function formatDate(dateStr) {
 function gamePlaceholder() {
     return '<div class="placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4M8 10v4M14 10l4 4M14 14l4-4"/></svg></div>';
 }
+
+// ============================================
+// AUTH
+// ============================================
 
 function initTabs() {
     document.querySelectorAll('.auth-tab').forEach(function (tab) {
@@ -170,6 +207,10 @@ async function loadUser() {
     }
 }
 
+// ============================================
+// GAME CARDS
+// ============================================
+
 function gameCardHTML(game, large) {
     return '<div class="game-card ' + (large ? 'large' : '') + '" onclick="location.href=\'/game/' + game.id + '\'">' +
         '<div class="game-card-image">' +
@@ -237,6 +278,10 @@ async function loadAllGames() {
     }
 }
 
+// ============================================
+// GAME PAGE
+// ============================================
+
 async function loadGamePage() {
     var container = document.getElementById('game-content');
     if (!container) return;
@@ -281,6 +326,10 @@ async function loadGamePage() {
         container.innerHTML = '<p class="error">Error loading game</p>';
     }
 }
+
+// ============================================
+// GAME LAUNCH
+// ============================================
 
 function playGame(gameId) {
     if (!currentUser) {
@@ -441,6 +490,10 @@ function shareGame(gameId) {
     toast('Link copied!');
 }
 
+// ============================================
+// SERVERS MODAL
+// ============================================
+
 function openServersModal() {
     var modal = document.getElementById('servers-modal');
     if (modal) {
@@ -489,15 +542,15 @@ async function loadGameServers() {
             '<div class="servers-list">';
 
         for (var i = 0; i < currentGameServers.length; i++) {
-            var server = currentGameServers[i];
+            var srv = currentGameServers[i];
             html +=
-                '<div class="server-item" onclick="joinServer(\'' + server.id + '\')">' +
+                '<div class="server-item" onclick="joinServer(\'' + srv.id + '\')">' +
                     '<div class="server-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>' +
                     '<div class="server-info">' +
-                        '<div class="server-name">' + escapeHtml(server.name) + '</div>' +
+                        '<div class="server-name">' + escapeHtml(srv.name) + '</div>' +
                         '<div class="server-meta">' +
-                            '<span class="server-players"><span class="dot"></span>' + server.players + '/' + server.maxPlayers + ' players</span>' +
-                            (server.ping ? '<span class="server-ping">' + server.ping + 'ms</span>' : '') +
+                            '<span class="server-players"><span class="dot"></span>' + srv.players + '/' + srv.maxPlayers + ' players</span>' +
+                            (srv.ping ? '<span class="server-ping">' + srv.ping + 'ms</span>' : '') +
                         '</div>' +
                     '</div>' +
                     '<button class="btn btn-primary server-join-btn">Join</button>' +
@@ -521,6 +574,10 @@ function joinServer(serverId) {
     closeServersModal();
     playGame(serverId);
 }
+
+// ============================================
+// USERS LIST
+// ============================================
 
 async function loadUsers() {
     var grid = document.getElementById('users-grid');
@@ -549,26 +606,19 @@ async function loadUsers() {
 }
 
 // ============================================
-// PROFILE
+// PROFILE (FIXED: no status pill, bigger badges with tooltip)
 // ============================================
 
 function buildProfileHTML(u) {
-    var statusClass = u.currentGame ? 'in-game' : (u.isOnline ? 'online' : 'offline');
-    var statusText = u.currentGame ? 'In Game' : (u.isOnline ? 'Online' : 'Offline');
-
-    var statusHtml =
-        '<div class="profile-status ' + statusClass + '">' +
-            '<span class="status-dot"></span>' + statusText +
-        '</div>';
-
-    // Badges
+    // Badges with tooltips
     var badgesHtml = '';
     if (u.badges && u.badges.length > 0) {
         var badgeItems = '';
         for (var i = 0; i < u.badges.length; i++) {
             var badge = u.badges[i];
+            var tooltipName = getBadgeTooltip(badge.id);
             badgeItems +=
-                '<div class="profile-badge badge-' + badge.id + '" data-name="' + escapeHtml(badge.name) + '">' +
+                '<div class="profile-badge badge-' + escapeHtml(badge.id) + '" data-tooltip="' + escapeHtml(tooltipName) + '">' +
                     '<div class="profile-badge-img" style="background-image:url(\'' + escapeHtml(badge.icon) + '\')"></div>' +
                 '</div>';
         }
@@ -598,21 +648,18 @@ function buildProfileHTML(u) {
             '</div>';
     }
 
-    // Last seen in info card
+    // Last seen in info card (no "Online" label — just date or nothing)
     var lastSeenValue;
     if (u.isOnline || u.currentGame) {
-        lastSeenValue =
-            '<span class="profile-info-value online">' +
-                '<span class="status-dot-sm"></span>Online' +
-            '</span>';
+        // Don't show "Online" — show join date context or just dash
+        lastSeenValue = '<span class="profile-info-value">Now</span>';
+    } else if (u.lastSeen) {
+        lastSeenValue = '<span class="profile-info-value">' + formatDate(u.lastSeen) + '</span>';
     } else {
-        lastSeenValue =
-            '<span class="profile-info-value offline">' +
-                '<span class="status-dot-sm"></span>Offline' +
-            '</span>';
+        lastSeenValue = '<span class="profile-info-value">Unknown</span>';
     }
 
-    // Frame 1 — Avatar with name on top
+    // Frame 1 — Avatar with name on top, badges below, NO status pill
     var frame1 =
         '<div class="profile-avatar-frame">' +
             '<div class="profile-frame-top">' +
@@ -622,7 +669,6 @@ function buildProfileHTML(u) {
             '<div class="profile-avatar" id="profile-avatar-container"></div>' +
             '<div class="profile-frame-bottom">' +
                 (badgesHtml || '<div></div>') +
-                statusHtml +
             '</div>' +
         '</div>';
 
@@ -660,6 +706,9 @@ async function loadProfile() {
     var id = location.pathname.split('/').pop();
     content.innerHTML = '<div class="loading-placeholder large"><div class="spinner"></div></div>';
 
+    // Inject badge tooltip styles
+    injectBadgeStyles();
+
     try {
         var res = await fetch('/api/user/' + id);
         var data = await res.json();
@@ -688,32 +737,16 @@ function startProfileRefresh(userId) {
             if (!data.success) return;
             var u = data.user;
 
-            // Update status pill
-            var statusEl = document.querySelector('.profile-frame-bottom .profile-status');
-            if (statusEl) {
-                var cls, text;
-                if (u.currentGame) {
-                    cls = 'profile-status in-game';
-                    text = 'In Game';
-                } else if (u.isOnline) {
-                    cls = 'profile-status online';
-                    text = 'Online';
-                } else {
-                    cls = 'profile-status offline';
-                    text = 'Offline';
-                }
-                statusEl.className = cls;
-                statusEl.innerHTML = '<span class="status-dot"></span>' + text;
-            }
-
             // Update last seen row
             var lastSeenRow = document.getElementById('profile-lastseen-row');
             if (lastSeenRow) {
                 var lsVal;
                 if (u.isOnline || u.currentGame) {
-                    lsVal = '<span class="profile-info-value online"><span class="status-dot-sm"></span>Online</span>';
+                    lsVal = '<span class="profile-info-value">Now</span>';
+                } else if (u.lastSeen) {
+                    lsVal = '<span class="profile-info-value">' + formatDate(u.lastSeen) + '</span>';
                 } else {
-                    lsVal = '<span class="profile-info-value offline"><span class="status-dot-sm"></span>Offline</span>';
+                    lsVal = '<span class="profile-info-value">Unknown</span>';
                 }
                 var labelEl = lastSeenRow.querySelector('.profile-info-label');
                 if (labelEl) {
@@ -778,6 +811,10 @@ function joinPlayerGame(gameId) {
     playGame(gameId);
 }
 
+// ============================================
+// HEARTBEAT
+// ============================================
+
 async function sendHeartbeat() {
     try { await fetch('/api/heartbeat', { method: 'POST' }); } catch (e) { }
 }
@@ -794,6 +831,10 @@ function stopHeartbeat() {
         heartbeatInterval = null;
     }
 }
+
+// ============================================
+// FOOTER
+// ============================================
 
 function createFooter() {
     if (document.querySelector('.auth-page') || document.querySelector('.countdown-page')) return;

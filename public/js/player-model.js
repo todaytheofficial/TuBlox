@@ -1,247 +1,294 @@
 // ============================================
 // PLAYER MODEL RENDERER
-// Renders FBX → screenshot → static image
-// Bust for users list, Full body for profile
+// Profile: полное тело (голова до ног)
+// Users: верхняя половина тела + лицо (бюст)
 // ============================================
 
 class PlayerModelRenderer {
     constructor(options = {}) {
         this.modelPath = options.modelPath || '/assets/models/player.fbx';
-        this.cache = { bust: null, full: null };
+        this.cache = {
+            bust: null,    // верхняя часть тела + лицо (для Users)
+            full: null     // полное тело (для Profile)
+        };
+        this.model = null;
         this.isLoading = false;
         this.loadCallbacks = [];
-        this.fbx = null;
     }
 
     load() {
-        if (this.cache.bust && this.cache.full) return Promise.resolve();
-        if (this.isLoading) {
-            return new Promise(r => this.loadCallbacks.push(r));
+        if (this.cache.bust && this.cache.full) {
+            return Promise.resolve();
         }
+        if (this.isLoading) {
+            return new Promise((resolve) => {
+                this.loadCallbacks.push(resolve);
+            });
+        }
+
         this.isLoading = true;
 
-        return new Promise((resolve) => {
-            if (typeof THREE === 'undefined' || typeof THREE.FBXLoader === 'undefined') {
-                console.warn('[PlayerModel] THREE/FBXLoader not loaded, using SVG fallback');
+        return new Promise((resolve, reject) => {
+            if (typeof THREE === 'undefined') {
+                console.warn('[PlayerModel] THREE.js not loaded, using fallback');
                 this.generateFallback();
-                this.done(resolve);
+                resolve();
                 return;
             }
 
-            new THREE.FBXLoader().load(
+            const loader = new THREE.FBXLoader();
+
+            loader.load(
                 this.modelPath,
                 (fbx) => {
-                    this.fbx = fbx;
-                    this.fixMaterials(fbx);
+                    this.model = fbx;
+                    this.processModel(fbx);
 
-                    // Measure model once
-                    var box = new THREE.Box3().setFromObject(fbx);
-                    var size = box.getSize(new THREE.Vector3());
-                    var center = box.getCenter(new THREE.Vector3());
-                    var minY = box.min.y;
+                    // ==============================
+                    // Рендерим ОБА кадра один раз
+                    // ==============================
+                    this.cache.bust = this.renderShot(fbx, 'bust');
+                    this.cache.full = this.renderShot(fbx, 'full');
 
-                    console.log('[PlayerModel] Model size:', size.x.toFixed(2), size.y.toFixed(2), size.z.toFixed(2));
+                    this.isLoading = false;
+                    console.log('[PlayerModel] ✓ Оба кадра отрендерены');
 
-                    // Render both shots
-                    this.cache.full = this.renderFullBody(fbx, size, center, minY);
-                    this.cache.bust = this.renderBust(fbx, size, center, minY);
-
-                    console.log('[PlayerModel] ✓ Both shots done');
-                    this.done(resolve);
+                    resolve();
+                    this.loadCallbacks.forEach(cb => cb());
+                    this.loadCallbacks = [];
                 },
                 undefined,
-                (err) => {
-                    console.error('[PlayerModel] ✗ Load error:', err);
+                (error) => {
+                    console.error('[PlayerModel] ✗ Ошибка:', error);
                     this.generateFallback();
-                    this.done(resolve);
+                    this.isLoading = false;
+                    resolve();
+                    this.loadCallbacks.forEach(cb => cb());
+                    this.loadCallbacks = [];
                 }
             );
         });
     }
 
-    done(resolve) {
-        this.isLoading = false;
-        resolve();
-        this.loadCallbacks.forEach(cb => cb());
-        this.loadCallbacks = [];
-    }
-
-    fixMaterials(fbx) {
-        fbx.traverse(child => {
-            if (!child.isMesh || !child.material) return;
-            var mats = Array.isArray(child.material) ? child.material : [child.material];
-            mats.forEach(m => {
-                m.metalness = 0;
-                m.roughness = 1;
-                if (m.emissive) {
-                    m.emissive.set(0x000000);
-                    m.emissiveIntensity = 0;
+    processModel(fbx) {
+        fbx.traverse((child) => {
+            if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+                if (child.material) {
+                    const mats = Array.isArray(child.material)
+                        ? child.material
+                        : [child.material];
+                    mats.forEach(m => {
+                        m.metalness = 0;
+                        m.roughness = 1;
+                        m.emissive = new THREE.Color(0x000000);
+                        m.emissiveIntensity = 0;
+                    });
                 }
-            });
+            }
         });
     }
 
-    createScene() {
-        var scene = new THREE.Scene();
-        // No background — transparent
+    // ============================================
+    // ГЛАВНАЯ ФУНКЦИЯ — разная камера для каждого типа
+    // ============================================
+    renderShot(fbx, type) {
 
-        // Strong ambient
-        scene.add(new THREE.AmbientLight(0xffffff, 1.3));
+        // ----------------------------------------
+        // Размеры канваса
+        // ----------------------------------------
+        let width, height;
 
-        // Front light — main
-        var front = new THREE.DirectionalLight(0xffffff, 1.0);
-        front.position.set(0, 2, 4);
-        scene.add(front);
+        if (type === 'full') {
+            // Profile — высокий вертикальный кадр
+            width  = 400;
+            height = 550;
+        } else {
+            // Users (bust) — квадратный / чуть вертикальный
+            width  = 200;
+            height = 200;
+        }
 
-        // Top light
-        var top = new THREE.DirectionalLight(0xffffff, 0.5);
-        top.position.set(0, 6, 0);
-        scene.add(top);
+        // ----------------------------------------
+        // Сцена
+        // ----------------------------------------
+        const scene = new THREE.Scene();
 
-        // Left fill
-        var left = new THREE.DirectionalLight(0xffffff, 0.35);
-        left.position.set(-4, 2, 2);
-        scene.add(left);
+        const camera = new THREE.PerspectiveCamera(
+            type === 'full' ? 35 : 30,   // FOV уже для буста → крупнее лицо
+            width / height,
+            0.01,
+            1000
+        );
 
-        // Right fill
-        var right = new THREE.DirectionalLight(0xffffff, 0.35);
-        right.position.set(4, 2, 2);
-        scene.add(right);
-
-        // Rim/back
-        var back = new THREE.DirectionalLight(0xffffff, 0.2);
-        back.position.set(0, 2, -3);
-        scene.add(back);
-
-        return scene;
-    }
-
-    createRenderer(w, h) {
-        var renderer = new THREE.WebGLRenderer({
+        const renderer = new THREE.WebGLRenderer({
             antialias: true,
-            alpha: true,
+            alpha: true,                  // прозрачный фон
             preserveDrawingBuffer: true
         });
-        renderer.setSize(w, h);
-        renderer.setPixelRatio(2);
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(2);        // чёткость ×2
         renderer.toneMapping = THREE.NoToneMapping;
-        return renderer;
-    }
+        renderer.outputEncoding = THREE.sRGBEncoding;
 
-    cleanup(renderer, scene) {
-        var dataUrl = renderer.domElement.toDataURL('image/png');
+        // ----------------------------------------
+        // Освещение — мягкое, равномерное
+        // ----------------------------------------
+        const ambient = new THREE.AmbientLight(0xffffff, 1.0);
+        scene.add(ambient);
+
+        const frontLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        frontLight.position.set(0, 1, 3);
+        scene.add(frontLight);
+
+        const topLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        topLight.position.set(0, 4, 0);
+        scene.add(topLight);
+
+        const leftLight = new THREE.DirectionalLight(0xffffff, 0.25);
+        leftLight.position.set(-3, 1, 1);
+        scene.add(leftLight);
+
+        const rightLight = new THREE.DirectionalLight(0xffffff, 0.25);
+        rightLight.position.set(3, 1, 1);
+        scene.add(rightLight);
+
+        // Подсветка снизу чтобы ноги не были чёрными
+        const bottomLight = new THREE.DirectionalLight(0xffffff, 0.15);
+        bottomLight.position.set(0, -2, 1);
+        scene.add(bottomLight);
+
+        // ----------------------------------------
+        // Клонируем модель
+        // ----------------------------------------
+        const clone = fbx.clone();
+
+        // Лёгкий поворот — 3/4 вид, как в Roblox
+        clone.rotation.y = Math.PI + 0.3;
+
+        // Считаем размеры модели
+        const box    = new THREE.Box3().setFromObject(clone);
+        const size   = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+
+        // ============================================
+        // FULL — ПРОФИЛЬ: всё тело от ног до головы
+        // Камера статична, видно полностью
+        // ============================================
+        if (type === 'full') {
+
+            // Ставим модель так чтобы ноги были внизу
+            clone.position.set(
+                -center.x,
+                -box.min.y,      // ноги на y=0
+                -center.z
+            );
+
+            // Камера смотрит на центр тела
+            const bodyCenter = size.y * 0.48;
+
+            // Расстояние чтобы вся модель влезла
+            const fovRad   = camera.fov * (Math.PI / 180);
+            const fitDist  = (size.y * 1.2) / (2 * Math.tan(fovRad / 2));
+            const cameraZ  = Math.max(fitDist, size.y * 0.9);
+
+            camera.position.set(0, bodyCenter, cameraZ);
+            camera.lookAt(0, bodyCenter, 0);
+
+        }
+
+        // ============================================
+        // BUST — USERS: верхняя половина тела + лицо
+        // Камера ближе, обрезает ниже пояса
+        // ============================================
+        else {
+
+            // Ставим модель — ноги на y=0
+            clone.position.set(
+                -center.x,
+                -box.min.y,
+                -center.z
+            );
+
+            // Точка фокуса — верхняя часть тела
+            // ~70% высоты = грудь/шея, чтобы лицо было в кадре
+            const focusY = size.y * 0.72;
+
+            // Камера ближе — показывает только верх
+            const cameraZ = size.y * 0.55;
+
+            camera.position.set(0, focusY, cameraZ);
+            camera.lookAt(0, focusY, 0);
+        }
+
+        scene.add(clone);
+
+        // ----------------------------------------
+        // Рендер одного кадра
+        // ----------------------------------------
+        renderer.render(scene, camera);
+
+        // Сохраняем как PNG
+        const dataUrl = renderer.domElement.toDataURL('image/png');
+
+        // ----------------------------------------
+        // Очистка памяти
+        // ----------------------------------------
         renderer.dispose();
-        try { renderer.forceContextLoss(); } catch (e) {}
-        scene.traverse(obj => {
+        scene.traverse((obj) => {
             if (obj.geometry) obj.geometry.dispose();
+            if (obj.material) {
+                const mats = Array.isArray(obj.material)
+                    ? obj.material
+                    : [obj.material];
+                mats.forEach(m => m.dispose());
+            }
         });
+
         return dataUrl;
     }
 
-    // ── FULL BODY SHOT (for profile page) ──
-    renderFullBody(fbx, size, center, minY) {
-        var w = 512, h = 640;
-
-        var scene = this.createScene();
-        var camera = new THREE.PerspectiveCamera(28, w / h, 0.01, 1000);
-        var renderer = this.createRenderer(w, h);
-
-        var clone = fbx.clone();
-
-        // Position: center X/Z, feet at y=0
-        clone.position.set(-center.x, -minY, -center.z);
-
-        // Slight angle like Roblox profile
-        clone.rotation.y = Math.PI + 0.4;
-
-        scene.add(clone);
-
-        // Camera: fit full height with padding
-        var bodyH = size.y;
-        var fovRad = camera.fov * (Math.PI / 180);
-        var dist = (bodyH * 1.2) / (2 * Math.tan(fovRad / 2));
-        var lookY = bodyH * 0.45;
-
-        camera.position.set(0, lookY, dist);
-        camera.lookAt(0, lookY, 0);
-
-        renderer.render(scene, camera);
-        return this.cleanup(renderer, scene);
-    }
-
-    // ── BUST SHOT (for users list — head + shoulders) ──
-    renderBust(fbx, size, center, minY) {
-        var w = 200, h = 200;
-
-        var scene = this.createScene();
-        var camera = new THREE.PerspectiveCamera(25, w / h, 0.01, 1000);
-        var renderer = this.createRenderer(w, h);
-
-        var clone = fbx.clone();
-
-        // Position: center X/Z, feet at y=0
-        clone.position.set(-center.x, -minY, -center.z);
-
-        // Slight angle
-        clone.rotation.y = Math.PI + 0.25;
-
-        scene.add(clone);
-
-        // Camera: focus on upper 35% of body (head + shoulders)
-        var bodyH = size.y;
-        var headCenter = bodyH * 0.82;  // ~82% up from feet = head area
-        var frameHeight = bodyH * 0.35; // show only top 35%
-
-        var fovRad = camera.fov * (Math.PI / 180);
-        var dist = (frameHeight * 1.1) / (2 * Math.tan(fovRad / 2));
-
-        camera.position.set(0, headCenter, dist);
-        camera.lookAt(0, headCenter, 0);
-
-        renderer.render(scene, camera);
-        return this.cleanup(renderer, scene);
-    }
-
-    // ── SVG FALLBACK ──
+    // ============================================
+    // Фоллбэк если модель не загрузилась
+    // ============================================
     generateFallback() {
-        var bustSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">' +
-            '<rect width="200" height="200" rx="20" fill="#1a1a2e"/>' +
-            '<rect x="55" y="40" width="90" height="95" rx="18" fill="#d4d4d4"/>' +
-            '<rect x="55" y="33" width="90" height="35" rx="14" fill="#555"/>' +
-            '<ellipse cx="82" cy="82" rx="8" ry="10" fill="#fff"/>' +
-            '<ellipse cx="118" cy="82" rx="8" ry="10" fill="#fff"/>' +
-            '<circle cx="84" cy="84" r="5" fill="#333"/>' +
-            '<circle cx="120" cy="84" r="5" fill="#333"/>' +
-            '<circle cx="86" cy="82" r="2" fill="#fff"/>' +
-            '<circle cx="122" cy="82" r="2" fill="#fff"/>' +
-            '<path d="M88 108 Q100 118 112 108" stroke="#888" stroke-width="3" fill="none" stroke-linecap="round"/>' +
-            '<rect x="55" y="140" width="90" height="60" rx="8" fill="#4a7c5f"/>' +
-            '<rect x="25" y="142" width="25" height="50" rx="8" fill="#4a7c5f"/>' +
-            '<rect x="150" y="142" width="25" height="50" rx="8" fill="#4a7c5f"/>' +
-            '</svg>';
+        // Bust fallback — лицо + плечи
+        const bustSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+            <rect x="25" y="55" width="50" height="40" rx="8" fill="#666"/>
+            <rect x="10" y="60" width="18" height="30" rx="6" fill="#666"/>
+            <rect x="72" y="60" width="18" height="30" rx="6" fill="#666"/>
+            <rect x="38" y="45" width="24" height="14" rx="4" fill="#ccc"/>
+            <rect x="25" y="8" width="50" height="42" rx="10" fill="#ccc"/>
+            <rect x="25" y="5" width="50" height="18" rx="8" fill="#3a3a3a"/>
+            <ellipse cx="38" cy="30" rx="5" ry="6" fill="#fff"/>
+            <ellipse cx="62" cy="30" rx="5" ry="6" fill="#fff"/>
+            <circle cx="39" cy="31" r="3" fill="#222"/>
+            <circle cx="63" cy="31" r="3" fill="#222"/>
+            <path d="M42 42 Q50 48 58 42" stroke="#555" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>`;
 
-        var fullSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 320">' +
-            '<ellipse cx="100" cy="310" rx="35" ry="6" fill="rgba(255,255,255,0.04)"/>' +
-            '<rect x="72" y="195" width="22" height="85" rx="6" fill="#3a3a55"/>' +
-            '<rect x="106" y="195" width="22" height="85" rx="6" fill="#3a3a55"/>' +
-            '<rect x="68" y="272" width="28" height="16" rx="5" fill="#333"/>' +
-            '<rect x="104" y="272" width="28" height="16" rx="5" fill="#333"/>' +
-            '<rect x="62" y="105" width="76" height="94" rx="10" fill="#4a7c5f"/>' +
-            '<rect x="30" y="110" width="24" height="70" rx="8" fill="#4a7c5f"/>' +
-            '<rect x="146" y="110" width="24" height="70" rx="8" fill="#4a7c5f"/>' +
-            '<rect x="34" y="175" width="16" height="18" rx="6" fill="#d4d4d4"/>' +
-            '<rect x="150" y="175" width="16" height="18" rx="6" fill="#d4d4d4"/>' +
-            '<rect x="84" y="88" width="32" height="22" rx="5" fill="#d4d4d4"/>' +
-            '<rect x="60" y="25" width="80" height="70" rx="14" fill="#d4d4d4"/>' +
-            '<rect x="60" y="18" width="80" height="30" rx="10" fill="#555"/>' +
-            '<ellipse cx="85" cy="58" rx="7" ry="8" fill="#fff"/>' +
-            '<ellipse cx="115" cy="58" rx="7" ry="8" fill="#fff"/>' +
-            '<circle cx="87" cy="60" r="4" fill="#333"/>' +
-            '<circle cx="117" cy="60" r="4" fill="#333"/>' +
-            '<circle cx="89" cy="58" r="1.5" fill="#fff"/>' +
-            '<circle cx="119" cy="58" r="1.5" fill="#fff"/>' +
-            '<path d="M90 75 Q100 83 110 75" stroke="#888" stroke-width="2.5" fill="none" stroke-linecap="round"/>' +
-            '</svg>';
+        // Full body fallback — всё тело
+        const fullSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 200">
+            <ellipse cx="50" cy="195" rx="25" ry="5" fill="rgba(0,0,0,0.1)"/>
+            <rect x="32" y="120" width="14" height="55" rx="4" fill="#555"/>
+            <rect x="54" y="120" width="14" height="55" rx="4" fill="#555"/>
+            <rect x="30" y="170" width="18" height="10" rx="3" fill="#333"/>
+            <rect x="52" y="170" width="18" height="10" rx="3" fill="#333"/>
+            <rect x="28" y="65" width="44" height="58" rx="6" fill="#666"/>
+            <rect x="12" y="68" width="14" height="45" rx="5" fill="#666"/>
+            <rect x="74" y="68" width="14" height="45" rx="5" fill="#666"/>
+            <rect x="14" y="110" width="10" height="12" rx="4" fill="#ccc"/>
+            <rect x="76" y="110" width="10" height="12" rx="4" fill="#ccc"/>
+            <rect x="42" y="55" width="16" height="14" rx="3" fill="#ccc"/>
+            <rect x="30" y="15" width="40" height="45" rx="8" fill="#ccc"/>
+            <rect x="30" y="12" width="40" height="18" rx="6" fill="#3a3a3a"/>
+            <ellipse cx="40" cy="38" rx="4" ry="5" fill="#fff"/>
+            <ellipse cx="60" cy="38" rx="4" ry="5" fill="#fff"/>
+            <circle cx="41" cy="39" r="2.5" fill="#222"/>
+            <circle cx="61" cy="39" r="2.5" fill="#222"/>
+            <path d="M42 50 Q50 56 58 50" stroke="#555" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>`;
 
         this.cache.bust = 'data:image/svg+xml;base64,' + btoa(bustSvg);
         this.cache.full = 'data:image/svg+xml;base64,' + btoa(fullSvg);
@@ -252,113 +299,130 @@ class PlayerModelRenderer {
 }
 
 // ============================================
-// GLOBAL INSTANCE
+// ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР
 // ============================================
 
-var playerRenderer = new PlayerModelRenderer();
+const playerRenderer = new PlayerModelRenderer();
 
 // ============================================
-// Apply avatar
+// Применить аватар к контейнеру
 // ============================================
 
 function applyAvatar(container, type) {
     if (!container || container.classList.contains('avatar-done')) return;
     container.classList.add('avatar-done');
 
-    var src = type === 'full' ? playerRenderer.getFullImage() : playerRenderer.getBustImage();
+    const src = type === 'full'
+        ? playerRenderer.getFullImage()
+        : playerRenderer.getBustImage();
+
     if (!src) return;
 
-    // Save status dot
-    var dot = container.querySelector('.user-status-dot');
-
-    // Remove placeholder
-    var placeholder = container.querySelector('.avatar-placeholder');
+    // Удаляем плейсхолдер
+    const placeholder = container.querySelector('.avatar-placeholder');
     if (placeholder) placeholder.remove();
 
-    // Create image
-    var img = document.createElement('img');
+    const img = document.createElement('img');
     img.src = src;
     img.alt = 'Player';
     img.draggable = false;
 
     if (type === 'full') {
-        img.style.cssText = 'width:100%;height:100%;object-fit:contain;display:block;';
+        // Profile — contain чтобы не обрезать
+        img.style.cssText = `
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        `;
     } else {
-        img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit;';
+        // Users — cover чтобы заполнить квадрат
+        img.style.cssText = `
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            border-radius: inherit;
+        `;
     }
 
     container.innerHTML = '';
     container.appendChild(img);
 
-    // Restore status dot
-    if (dot) container.appendChild(dot);
-
-    // Profile frame placeholder
+    // Убираем плейсхолдер в родительском фрейме
     if (type === 'full') {
-        var fp = container.closest('.profile-avatar-frame');
-        if (fp) {
-            var fpp = fp.querySelector('.avatar-placeholder');
-            if (fpp) fpp.remove();
-        }
+        const fp = container.closest('.profile-avatar-frame')
+            ?.querySelector('.avatar-placeholder');
+        if (fp) fp.remove();
     }
 }
 
 // ============================================
-// Profile Page
+// Profile Page — полное тело
 // ============================================
 
 function initProfileModel() {
-    var content = document.getElementById('profile-content');
+    const content = document.getElementById('profile-content');
     if (!content) return;
 
-    var tryInit = function () {
-        var avatar = content.querySelector('.profile-avatar:not(.avatar-done)');
-        if (avatar) applyAvatar(avatar, 'full');
+    const tryInit = () => {
+        const avatar = content.querySelector('.profile-avatar:not(.avatar-done)');
+        if (!avatar) return;
+        applyAvatar(avatar, 'full');   // ← ПОЛНОЕ ТЕЛО
     };
 
-    playerRenderer.load().then(function () {
+    playerRenderer.load().then(() => {
         tryInit();
-        new MutationObserver(function () { tryInit(); })
-            .observe(content, { childList: true, subtree: true });
+        const observer = new MutationObserver(() => tryInit());
+        observer.observe(content, { childList: true, subtree: true });
     });
 }
 
 // ============================================
-// Users Page
+// Users Page — верхняя половина + лицо
 // ============================================
 
 function initUsersModels() {
-    var grid = document.getElementById('users-grid');
+    const grid = document.getElementById('users-grid');
     if (!grid) return;
 
-    var tryInit = function () {
-        var avatars = grid.querySelectorAll('.user-avatar:not(.avatar-done)');
-        avatars.forEach(function (a) { applyAvatar(a, 'bust'); });
+    const tryInit = () => {
+        const avatars = grid.querySelectorAll('.user-avatar:not(.avatar-done)');
+        avatars.forEach(a => applyAvatar(a, 'bust'));  // ← БЮСТ
     };
 
-    playerRenderer.load().then(function () {
+    playerRenderer.load().then(() => {
         tryInit();
-        new MutationObserver(function () { tryInit(); })
-            .observe(grid, { childList: true, subtree: true });
+        const observer = new MutationObserver(() => tryInit());
+        observer.observe(grid, { childList: true, subtree: true });
     });
 }
 
 // ============================================
-// Home Page
+// Home Page — бюст
 // ============================================
 
 function initHomeAvatar() {
-    var avatar = document.getElementById('home-avatar');
+    const avatar = document.getElementById('home-avatar');
     if (!avatar) return;
-    playerRenderer.load().then(function () { applyAvatar(avatar, 'bust'); });
+
+    playerRenderer.load().then(() => {
+        applyAvatar(avatar, 'bust');
+    });
 }
 
 // ============================================
 // Init
 // ============================================
 
-document.addEventListener('DOMContentLoaded', function () {
-    if (document.querySelector('.profile-page')) initProfileModel();
-    if (document.querySelector('.users-page')) initUsersModels();
-    if (document.querySelector('.home-page')) initHomeAvatar();
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.querySelector('.profile-page')) {
+        initProfileModel();
+    }
+    if (document.querySelector('.users-page')) {
+        initUsersModels();
+    }
+    if (document.querySelector('.home-page')) {
+        initHomeAvatar();
+    }
 });

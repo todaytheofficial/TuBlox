@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TuBlox</title>
+    <title>Settings — TuBlox</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -50,10 +50,6 @@
                         <div class="settings-account-row">
                             <span class="settings-row-label">Member since</span>
                             <span class="settings-row-value" id="display-joined">—</span>
-                        </div>
-                        <div class="settings-account-row">
-                            <span class="settings-row-label">Last active</span>
-                            <span class="settings-row-value" id="display-last-active">—</span>
                         </div>
                     </div>
                 </div>
@@ -139,33 +135,18 @@
                 </div>
             </section>
 
-            <!-- Password -->
+            <!-- Change Password -->
             <section class="settings-card">
                 <div class="settings-card-header">
                     <div class="settings-card-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                     </div>
                     <div>
-                        <h2>Password</h2>
-                        <p>View or change your password</p>
+                        <h2>Change Password</h2>
+                        <p>Update your account password</p>
                     </div>
                 </div>
                 <div class="settings-card-body">
-                    <!-- View password -->
-                    <div class="settings-form-field">
-                        <label class="settings-form-label">Current Password</label>
-                        <div class="settings-form-row">
-                            <input type="password" id="password-display" class="settings-input mono" value="••••••••" readonly>
-                            <button type="button" id="toggle-password-btn" class="btn btn-secondary" title="Reveal password">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon eye-open"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon eye-closed" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="settings-separator"></div>
-
-                    <!-- Change password -->
                     <div class="settings-form-field">
                         <label class="settings-form-label">Current Password</label>
                         <input type="password" id="current-password" class="settings-input" placeholder="Enter current password">
@@ -206,22 +187,6 @@
 
         </div>
     </main>
-
-    <!-- Verify Password Modal -->
-    <div class="modal" id="verify-modal">
-        <div class="modal-backdrop"></div>
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Verify Identity</h3>
-                <button class="modal-close" onclick="closeVerifyModal()">&times;</button>
-            </div>
-            <div class="modal-body" style="text-align:left">
-                <p style="color:var(--gray);margin-bottom:16px;font-size:14px;">Enter your password to reveal it.</p>
-                <input type="password" id="verify-password-input" class="settings-input" placeholder="Your password" style="margin-bottom:12px">
-                <button type="button" id="verify-password-btn" class="btn btn-primary settings-btn-full">Verify</button>
-            </div>
-        </div>
-    </div>
 
     <div class="toast-container" id="toast-container"></div>
 

@@ -1,7 +1,3 @@
-// ═══════════════════════════════════════════════════════════════
-// SETTINGS PAGE
-// ═══════════════════════════════════════════════════════════════
-
 let settingsUser = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -24,9 +20,8 @@ async function loadSettingsUser() {
         setText('display-username', settingsUser.username);
         setText('display-id', '#' + settingsUser.odilId);
         setText('display-joined', fmtDate(settingsUser.createdAt));
-        setText('display-last-active', fmtDate(settingsUser.lastSeen || settingsUser.createdAt));
     } catch (e) {
-        showSettingsToast('Failed to load account', 'error');
+        sToast('Failed to load account', 'error');
     }
 }
 
@@ -62,7 +57,7 @@ function applyThemeSelection(theme, save) {
 
     if (save) {
         localStorage.setItem('tublox-theme', theme);
-        showSettingsToast('Theme updated');
+        sToast('Theme updated');
     }
 }
 
@@ -71,22 +66,12 @@ function applyThemeSelection(theme, save) {
 // ═══════════════════════════════════════════════════════════════
 
 function initSettingsEvents() {
-    // Username
     byId('change-username-btn').addEventListener('click', changeUsername);
     byId('new-username').addEventListener('keypress', e => { if (e.key === 'Enter') changeUsername(); });
 
-    // Password change
     byId('change-password-btn').addEventListener('click', changePassword);
+    byId('confirm-password').addEventListener('keypress', e => { if (e.key === 'Enter') changePassword(); });
 
-    // Toggle password view
-    byId('toggle-password-btn').addEventListener('click', openVerifyModal);
-
-    // Verify modal
-    byId('verify-password-btn').addEventListener('click', verifyAndReveal);
-    byId('verify-password-input').addEventListener('keypress', e => { if (e.key === 'Enter') verifyAndReveal(); });
-    document.querySelector('#verify-modal .modal-backdrop').addEventListener('click', closeVerifyModal);
-
-    // Logout
     byId('logout-btn').addEventListener('click', async () => {
         await fetch('/api/logout', { method: 'POST' });
         window.location.href = '/';
@@ -100,10 +85,11 @@ function initSettingsEvents() {
 async function changeUsername() {
     const input = byId('new-username');
     const val = input.value.trim().toLowerCase();
-    if (!val) return showSettingsToast('Enter a username', 'error');
-    if (val.length < 3 || val.length > 20) return showSettingsToast('Must be 3–20 characters', 'error');
-    if (!/^[a-z0-9_]+$/.test(val)) return showSettingsToast('Only letters, numbers, underscore', 'error');
-    if (val === settingsUser.username) return showSettingsToast('Already your username', 'error');
+
+    if (!val) return sToast('Enter a username', 'error');
+    if (val.length < 3 || val.length > 20) return sToast('Must be 3–20 characters', 'error');
+    if (!/^[a-z0-9_]+$/.test(val)) return sToast('Only letters, numbers, underscore', 'error');
+    if (val === settingsUser.username) return sToast('Already your username', 'error');
 
     const btn = byId('change-username-btn');
     setBtnLoading(btn, true);
@@ -119,12 +105,12 @@ async function changeUsername() {
             settingsUser.username = val;
             setText('display-username', val);
             input.value = '';
-            showSettingsToast('Username changed');
+            sToast('Username changed');
         } else {
-            showSettingsToast(data.message || 'Failed', 'error');
+            sToast(data.message || 'Failed', 'error');
         }
     } catch (e) {
-        showSettingsToast('Connection error', 'error');
+        sToast('Connection error', 'error');
     }
     setBtnLoading(btn, false, 'Save');
 }
@@ -138,9 +124,10 @@ async function changePassword() {
     const nw = byId('new-password').value;
     const conf = byId('confirm-password').value;
 
-    if (!cur || !nw || !conf) return showSettingsToast('Fill all fields', 'error');
-    if (nw.length < 6) return showSettingsToast('Min 6 characters', 'error');
-    if (nw !== conf) return showSettingsToast('Passwords don\'t match', 'error');
+    if (!cur || !nw || !conf) return sToast('Fill all fields', 'error');
+    if (nw.length < 6) return sToast('Min 6 characters', 'error');
+    if (nw !== conf) return sToast('Passwords don\'t match', 'error');
+    if (cur === nw) return sToast('New password must be different', 'error');
 
     const btn = byId('change-password-btn');
     setBtnLoading(btn, true);
@@ -156,71 +143,14 @@ async function changePassword() {
             byId('current-password').value = '';
             byId('new-password').value = '';
             byId('confirm-password').value = '';
-            showSettingsToast('Password changed');
+            sToast('Password changed');
         } else {
-            showSettingsToast(data.message || 'Failed', 'error');
+            sToast(data.message || 'Failed', 'error');
         }
     } catch (e) {
-        showSettingsToast('Connection error', 'error');
+        sToast('Connection error', 'error');
     }
     setBtnLoading(btn, false, 'Change Password');
-}
-
-// ═══════════════════════════════════════════════════════════════
-// VERIFY & REVEAL PASSWORD
-// ═══════════════════════════════════════════════════════════════
-
-function openVerifyModal() {
-    byId('verify-modal').classList.add('active');
-    const inp = byId('verify-password-input');
-    inp.value = '';
-    setTimeout(() => inp.focus(), 100);
-}
-
-function closeVerifyModal() {
-    byId('verify-modal').classList.remove('active');
-}
-
-async function verifyAndReveal() {
-    const pw = byId('verify-password-input').value;
-    if (!pw) return showSettingsToast('Enter password', 'error');
-
-    const btn = byId('verify-password-btn');
-    setBtnLoading(btn, true);
-
-    try {
-        const res = await fetch('/api/user/verify-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: pw })
-        });
-        const data = await res.json();
-        if (data.success) {
-            closeVerifyModal();
-            const display = byId('password-display');
-            const eyeOpen = document.querySelector('.eye-open');
-            const eyeClosed = document.querySelector('.eye-closed');
-
-            display.type = 'text';
-            display.value = pw;
-            eyeOpen.style.display = 'none';
-            eyeClosed.style.display = 'block';
-
-            showSettingsToast('Visible for 5 seconds');
-
-            setTimeout(() => {
-                display.type = 'password';
-                display.value = '••••••••';
-                eyeOpen.style.display = 'block';
-                eyeClosed.style.display = 'none';
-            }, 5000);
-        } else {
-            showSettingsToast(data.message || 'Wrong password', 'error');
-        }
-    } catch (e) {
-        showSettingsToast('Connection error', 'error');
-    }
-    setBtnLoading(btn, false, 'Verify');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -247,7 +177,7 @@ function setBtnLoading(btn, loading, label) {
     }
 }
 
-function showSettingsToast(msg, type) {
+function sToast(msg, type) {
     if (window.toast) { window.toast(msg, type || 'success'); return; }
     const c = byId('toast-container');
     if (!c) return;

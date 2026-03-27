@@ -1018,6 +1018,10 @@ app.get('/download/TuClient.zip', (req, res) => {
     res.redirect(`${GAME_SERVER_URL}/download/TuClient.zip`);
 });
 
+app.get('/download/TuStudio.zip', (req, res) => {
+    res.redirect(`${GAME_SERVER_URL}/download/TuStudio.zip`);
+});
+
 // ═══════════════════════════════════════════════════════════════
 // ERROR HANDLER
 // ═══════════════════════════════════════════════════════════════

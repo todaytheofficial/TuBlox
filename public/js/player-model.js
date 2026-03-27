@@ -1,312 +1,259 @@
-class PlayerModelViewer {
-    constructor(container, options = {}) {
-        this.container = container;
-        this.options = {
-            width: options.width || container.clientWidth || 200,
-            height: options.height || container.clientHeight || 280,
-            modelPath: options.modelPath || '/assets/models/player.fbx',
-            autoRotate: options.autoRotate || false,
-            backgroundColor: options.backgroundColor || null,
-            isProfile: options.isProfile || false
+// ============================================
+// PLAYER MODEL RENDERER
+// Renders FBX model → takes screenshot → shows as static image
+// Like Roblox: bust for users, full body for profile
+// ============================================
+
+class PlayerModelRenderer {
+    constructor(options = {}) {
+        this.modelPath = options.modelPath || '/assets/models/player.fbx';
+        this.cache = {
+            bust: null,    // data URL for head/bust shot
+            full: null     // data URL for full body shot
         };
-
-        this.scene = null;
-        this.camera = null;
-        this.renderer = null;
         this.model = null;
-        this.mixer = null;
-        this.isDestroyed = false;
-        this.clock = new THREE.Clock();
-
-        // Mouse rotation
-        this.isDragging = false;
-        this.previousMouseX = 0;
-        this.modelRotationY = Math.PI + 0.3;
-        this.targetRotationY = Math.PI + 0.3;
-
-        this.init();
+        this.isLoading = false;
+        this.loadCallbacks = [];
     }
 
-    init() {
-        this.scene = new THREE.Scene();
-
-        if (this.options.backgroundColor !== null) {
-            this.scene.background = new THREE.Color(this.options.backgroundColor);
+    // Load model once, generate both images
+    load() {
+        if (this.cache.bust && this.cache.full) {
+            return Promise.resolve();
         }
-
-        this.camera = new THREE.PerspectiveCamera(
-            40,
-            this.options.width / this.options.height,
-            0.01,
-            1000
-        );
-
-        this.renderer = new THREE.WebGLRenderer({
-            antialias: true,
-            alpha: this.options.backgroundColor === null
-        });
-        this.renderer.setSize(this.options.width, this.options.height);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        this.renderer.shadowMap.enabled = true;
-        this.renderer.toneMapping = THREE.NoToneMapping;
-
-        this.container.innerHTML = '';
-        this.container.appendChild(this.renderer.domElement);
-
-        if (this.options.isProfile) {
-            this.setupMouseControls();
-        }
-
-        this.setupLights();
-        this.loadModel();
-        this.animate();
-    }
-
-    setupMouseControls() {
-        const canvas = this.renderer.domElement;
-        canvas.style.cursor = 'grab';
-
-        canvas.addEventListener('mousedown', (e) => {
-            this.isDragging = true;
-            this.previousMouseX = e.clientX;
-            canvas.style.cursor = 'grabbing';
-        });
-
-        window.addEventListener('mousemove', (e) => {
-            if (!this.isDragging) return;
-            const deltaX = e.clientX - this.previousMouseX;
-            this.targetRotationY += deltaX * 0.012;
-            this.previousMouseX = e.clientX;
-        });
-
-        window.addEventListener('mouseup', () => {
-            this.isDragging = false;
-            canvas.style.cursor = 'grab';
-        });
-
-        canvas.addEventListener('touchstart', (e) => {
-            this.isDragging = true;
-            this.previousMouseX = e.touches[0].clientX;
-        });
-
-        canvas.addEventListener('touchmove', (e) => {
-            if (!this.isDragging) return;
-            e.preventDefault();
-            const deltaX = e.touches[0].clientX - this.previousMouseX;
-            this.targetRotationY += deltaX * 0.012;
-            this.previousMouseX = e.touches[0].clientX;
-        }, { passive: false });
-
-        canvas.addEventListener('touchend', () => {
-            this.isDragging = false;
-        });
-    }
-
-    setupLights() {
-        // Основной ambient — мягкий общий свет
-        const ambient = new THREE.AmbientLight(0xffffff, 1.0);
-        this.scene.add(ambient);
-
-        // Фронтальный свет — освещает лицо
-        const frontLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        frontLight.position.set(0, 1, 2);
-        this.scene.add(frontLight);
-
-        // Верхний свет
-        const topLight = new THREE.DirectionalLight(0xffffff, 0.4);
-        topLight.position.set(0, 3, 0);
-        this.scene.add(topLight);
-
-        // Левый боковой
-        const leftLight = new THREE.DirectionalLight(0xffffff, 0.2);
-        leftLight.position.set(-2, 1, 0);
-        this.scene.add(leftLight);
-
-        // Правый боковой
-        const rightLight = new THREE.DirectionalLight(0xffffff, 0.2);
-        rightLight.position.set(2, 1, 0);
-        this.scene.add(rightLight);
-    }
-
-    loadModel() {
-        const loader = new THREE.FBXLoader();
-
-        loader.load(
-            this.options.modelPath,
-            (fbx) => {
-                this.model = fbx;
-
-                const box = new THREE.Box3().setFromObject(this.model);
-                const size = box.getSize(new THREE.Vector3());
-                const center = box.getCenter(new THREE.Vector3());
-
-                if (this.options.isProfile) {
-                    // Ставим ноги на уровень 0, центрируем по X и Z
-                    this.model.position.set(
-                        -center.x,
-                        -box.min.y,
-                        -center.z
-                    );
-
-                    // Рассчитываем дистанцию камеры чтобы всё тело влезло
-                    const fov = this.camera.fov * (Math.PI / 180);
-                    const aspect = this.options.width / this.options.height;
-
-                    const fitH = (size.y * 1.2) / (2 * Math.tan(fov / 2));
-                    const fitW = fitH / aspect;
-                    const cameraZ = Math.max(fitH, fitW) * 1.05;
-
-                    // Смотрим на центр тела по высоте
-                    const lookAtY = size.y * 0.5;
-
-                    this.camera.position.set(0, lookAtY, cameraZ);
-                    this.camera.lookAt(0, lookAtY, 0);
-
-                } else {
-                    // Bust/голова для маленьких аватарок
-                    this.model.position.set(
-                        -center.x,
-                        -center.y,
-                        -center.z
-                    );
-
-                    const headY = size.y * 0.28;
-                    const cameraZ = size.y * 0.65;
-
-                    this.camera.position.set(0, headY, cameraZ);
-                    this.camera.lookAt(0, headY, 0);
-                }
-
-                this.model.rotation.y = this.modelRotationY;
-                this.targetRotationY = this.modelRotationY;
-
-                // Анимации
-                if (fbx.animations && fbx.animations.length > 0) {
-                    this.mixer = new THREE.AnimationMixer(this.model);
-
-                    let idleClip = null;
-                    for (const clip of fbx.animations) {
-                        if (clip.name.toLowerCase().includes('idle')) {
-                            idleClip = clip;
-                            break;
-                        }
-                    }
-
-                    // Если idle не найден — берём первую анимацию
-                    if (!idleClip) {
-                        idleClip = fbx.animations[0];
-                    }
-
-                    if (idleClip) {
-                        const action = this.mixer.clipAction(idleClip);
-                        action.play();
-                    }
-                }
-
-                // Материалы
-                this.model.traverse((child) => {
-                    if (child.isMesh) {
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                        if (child.material) {
-                            const mats = Array.isArray(child.material)
-                                ? child.material
-                                : [child.material];
-                            mats.forEach(m => {
-                                m.metalness = 0;
-                                m.roughness = 1;
-                                m.emissive = new THREE.Color(0x000000);
-                                m.emissiveIntensity = 0;
-                            });
-                        }
-                    }
-                });
-
-                this.scene.add(this.model);
-
-                // Скрываем placeholder
-                const placeholder = this.container.closest('.profile-avatar-frame')
-                    ?.querySelector('.avatar-placeholder');
-                if (placeholder) {
-                    placeholder.style.opacity = '0';
-                    setTimeout(() => placeholder.remove(), 300);
-                }
-
-                console.log('[PlayerModel] ✓ Loaded | size:', size);
-            },
-            (xhr) => {
-                if (xhr.total) {
-                    const pct = Math.round((xhr.loaded / xhr.total) * 100);
-                    const percentEl = this.container.querySelector('.percent');
-                    if (percentEl) percentEl.textContent = pct + '%';
-                }
-            },
-            (error) => {
-                console.error('[PlayerModel] ✗ Error:', error);
-                this.showError();
-            }
-        );
-    }
-
-    showError() {
-        this.container.innerHTML = `
-            <div style="
-                display:flex;
-                align-items:center;
-                justify-content:center;
-                height:100%;
-                color:#555;
-                font-size:12px;
-                text-align:center;
-                padding:10px;
-                font-family:'General Sans',sans-serif;
-            ">
-                <div>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                        style="width:32px;height:32px;margin-bottom:8px;display:block;margin-left:auto;margin-right:auto;">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="12" y1="8" x2="12" y2="12"/>
-                        <line x1="12" y1="16" x2="12.01" y2="16"/>
-                    </svg>
-                    Failed to load model
-                </div>
-            </div>
-        `;
-    }
-
-    animate() {
-        if (this.isDestroyed) return;
-
-        requestAnimationFrame(() => this.animate());
-
-        const delta = this.clock.getDelta();
-        if (this.mixer) {
-            this.mixer.update(delta);
-        }
-
-        // Плавное вращение
-        if (this.model && this.options.isProfile) {
-            this.modelRotationY += (this.targetRotationY - this.modelRotationY) * 0.1;
-            this.model.rotation.y = this.modelRotationY;
-        }
-
-        this.renderer.render(this.scene, this.camera);
-    }
-
-    destroy() {
-        this.isDestroyed = true;
-        if (this.mixer) this.mixer.stopAllAction();
-        if (this.renderer) this.renderer.dispose();
-        if (this.scene) {
-            this.scene.traverse((obj) => {
-                if (obj.geometry) obj.geometry.dispose();
-                if (obj.material) {
-                    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-                    mats.forEach(m => m.dispose());
-                }
+        if (this.isLoading) {
+            return new Promise((resolve) => {
+                this.loadCallbacks.push(resolve);
             });
         }
-        this.container.innerHTML = '';
+
+        this.isLoading = true;
+
+        return new Promise((resolve, reject) => {
+            // Check if THREE is available
+            if (typeof THREE === 'undefined') {
+                console.warn('[PlayerModel] THREE.js not loaded, using fallback');
+                this.generateFallback();
+                resolve();
+                return;
+            }
+
+            const loader = new THREE.FBXLoader();
+
+            loader.load(
+                this.modelPath,
+                (fbx) => {
+                    this.model = fbx;
+                    this.processModel(fbx);
+
+                    // Render bust shot
+                    this.cache.bust = this.renderShot(fbx, 'bust');
+                    // Render full body shot
+                    this.cache.full = this.renderShot(fbx, 'full');
+
+                    this.isLoading = false;
+                    console.log('[PlayerModel] ✓ Rendered both shots');
+
+                    resolve();
+                    this.loadCallbacks.forEach(cb => cb());
+                    this.loadCallbacks = [];
+                },
+                undefined,
+                (error) => {
+                    console.error('[PlayerModel] ✗ Error:', error);
+                    this.generateFallback();
+                    this.isLoading = false;
+                    resolve();
+                    this.loadCallbacks.forEach(cb => cb());
+                    this.loadCallbacks = [];
+                }
+            );
+        });
+    }
+
+    processModel(fbx) {
+        fbx.traverse((child) => {
+            if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+                if (child.material) {
+                    const mats = Array.isArray(child.material) ? child.material : [child.material];
+                    mats.forEach(m => {
+                        m.metalness = 0;
+                        m.roughness = 1;
+                        m.emissive = new THREE.Color(0x000000);
+                        m.emissiveIntensity = 0;
+                    });
+                }
+            }
+        });
+    }
+
+    renderShot(fbx, type) {
+        // Create offscreen renderer
+        const width = type === 'bust' ? 150 : 400;
+        const height = type === 'bust' ? 150 : 500;
+
+        const scene = new THREE.Scene();
+
+        const camera = new THREE.PerspectiveCamera(40, width / height, 0.01, 1000);
+
+        const renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            alpha: true,
+            preserveDrawingBuffer: true
+        });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(2);
+        renderer.toneMapping = THREE.NoToneMapping;
+
+        // Lights
+        const ambient = new THREE.AmbientLight(0xffffff, 1.0);
+        scene.add(ambient);
+
+        const frontLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        frontLight.position.set(0, 1, 2);
+        scene.add(frontLight);
+
+        const topLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        topLight.position.set(0, 3, 0);
+        scene.add(topLight);
+
+        const leftLight = new THREE.DirectionalLight(0xffffff, 0.2);
+        leftLight.position.set(-2, 1, 0);
+        scene.add(leftLight);
+
+        const rightLight = new THREE.DirectionalLight(0xffffff, 0.2);
+        rightLight.position.set(2, 1, 0);
+        scene.add(rightLight);
+
+        // Clone model for independent positioning
+        const clone = fbx.clone();
+        clone.rotation.y = Math.PI + 0.3;
+
+        const box = new THREE.Box3().setFromObject(clone);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+
+        if (type === 'full') {
+            // Full body — feet at bottom, whole character visible
+            clone.position.set(-center.x, -box.min.y, -center.z);
+
+            const fov = camera.fov * (Math.PI / 180);
+            const fitH = (size.y * 1.15) / (2 * Math.tan(fov / 2));
+            const cameraZ = fitH * 1.05;
+            const lookAtY = size.y * 0.48;
+
+            camera.position.set(0, lookAtY, cameraZ);
+            camera.lookAt(0, lookAtY, 0);
+        } else {
+            // Bust — head and shoulders like Roblox thumbnail
+            clone.position.set(-center.x, -center.y, -center.z);
+
+            const headY = size.y * 0.30;
+            const cameraZ = size.y * 0.55;
+
+            camera.position.set(0, headY, cameraZ);
+            camera.lookAt(0, headY, 0);
+        }
+
+        scene.add(clone);
+
+        // Render single frame
+        renderer.render(scene, camera);
+
+        // Extract image
+        const dataUrl = renderer.domElement.toDataURL('image/png');
+
+        // Cleanup
+        renderer.dispose();
+        scene.traverse((obj) => {
+            if (obj.geometry) obj.geometry.dispose();
+        });
+
+        return dataUrl;
+    }
+
+    generateFallback() {
+        // SVG fallback if model fails to load
+        const bustSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50">
+            <rect x="5" y="8" width="40" height="38" rx="8" fill="#ccc"/>
+            <rect x="5" y="5" width="40" height="15" rx="6" fill="#3a3a3a"/>
+            <ellipse cx="18" cy="26" rx="3.5" ry="4" fill="#fff"/>
+            <ellipse cx="32" cy="26" rx="3.5" ry="4" fill="#fff"/>
+            <circle cx="19" cy="27" r="2" fill="#222"/>
+            <circle cx="33" cy="27" r="2" fill="#222"/>
+            <path d="M20 35 Q25 39 30 35" stroke="#555" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        </svg>`;
+
+        const fullSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 200">
+            <ellipse cx="50" cy="195" rx="25" ry="5" fill="rgba(0,0,0,0.15)"/>
+            <rect x="32" y="120" width="14" height="55" rx="4" fill="#555"/>
+            <rect x="54" y="120" width="14" height="55" rx="4" fill="#555"/>
+            <rect x="30" y="170" width="18" height="10" rx="3" fill="#333"/>
+            <rect x="52" y="170" width="18" height="10" rx="3" fill="#333"/>
+            <rect x="28" y="65" width="44" height="58" rx="6" fill="#666"/>
+            <rect x="12" y="68" width="14" height="45" rx="5" fill="#666"/>
+            <rect x="74" y="68" width="14" height="45" rx="5" fill="#666"/>
+            <rect x="14" y="110" width="10" height="12" rx="4" fill="#ccc"/>
+            <rect x="76" y="110" width="10" height="12" rx="4" fill="#ccc"/>
+            <rect x="42" y="55" width="16" height="14" rx="3" fill="#ccc"/>
+            <rect x="30" y="15" width="40" height="45" rx="8" fill="#ccc"/>
+            <rect x="30" y="12" width="40" height="18" rx="6" fill="#3a3a3a"/>
+            <ellipse cx="40" cy="38" rx="4" ry="5" fill="#fff"/>
+            <ellipse cx="60" cy="38" rx="4" ry="5" fill="#fff"/>
+            <circle cx="41" cy="39" r="2.5" fill="#222"/>
+            <circle cx="61" cy="39" r="2.5" fill="#222"/>
+            <path d="M42 50 Q50 56 58 50" stroke="#555" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>`;
+
+        this.cache.bust = 'data:image/svg+xml;base64,' + btoa(bustSvg);
+        this.cache.full = 'data:image/svg+xml;base64,' + btoa(fullSvg);
+    }
+
+    getBustImage() { return this.cache.bust; }
+    getFullImage() { return this.cache.full; }
+}
+
+// ============================================
+// GLOBAL INSTANCE — one renderer for all
+// ============================================
+
+const playerRenderer = new PlayerModelRenderer();
+
+// ============================================
+// Apply avatar to container
+// ============================================
+
+function applyAvatar(container, type) {
+    if (!container || container.classList.contains('avatar-done')) return;
+    container.classList.add('avatar-done');
+
+    const src = type === 'full' ? playerRenderer.getFullImage() : playerRenderer.getBustImage();
+    if (!src) return;
+
+    // Remove placeholder
+    const placeholder = container.querySelector('.avatar-placeholder');
+    if (placeholder) placeholder.remove();
+
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = 'Player';
+    img.draggable = false;
+
+    if (type === 'full') {
+        img.style.cssText = 'width:100%;height:100%;object-fit:contain;display:block;';
+    } else {
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit;';
+    }
+
+    container.innerHTML = '';
+    container.appendChild(img);
+
+    // Frame placeholder too
+    if (type === 'full') {
+        const fp = container.closest('.profile-avatar-frame')?.querySelector('.avatar-placeholder');
+        if (fp) fp.remove();
     }
 }
 
@@ -319,40 +266,18 @@ function initProfileModel() {
     if (!content) return;
 
     const tryInit = () => {
-        const avatar = content.querySelector('.profile-avatar:not(.model-init)');
+        const avatar = content.querySelector('.profile-avatar:not(.avatar-done)');
         if (!avatar) return;
-
-        avatar.classList.add('model-init');
-
-        const initWithSize = () => {
-            const w = avatar.clientWidth || 380;
-            const h = avatar.clientHeight || 280;
-
-            // Ждём пока контейнер получит реальные размеры
-            if (w < 10 || h < 10) {
-                requestAnimationFrame(initWithSize);
-                return;
-            }
-
-            new PlayerModelViewer(avatar, {
-                width: w,
-                height: h,
-                autoRotate: false,
-                backgroundColor: null,
-                isProfile: true
-            });
-        };
-
-        initWithSize();
+        applyAvatar(avatar, 'full');
     };
 
-    tryInit();
-
-    const observer = new MutationObserver(() => {
+    // Load model then apply
+    playerRenderer.load().then(() => {
         tryInit();
-    });
 
-    observer.observe(content, { childList: true, subtree: true });
+        const observer = new MutationObserver(() => tryInit());
+        observer.observe(content, { childList: true, subtree: true });
+    });
 }
 
 // ============================================
@@ -363,35 +288,29 @@ function initUsersModels() {
     const grid = document.getElementById('users-grid');
     if (!grid) return;
 
-    const viewers = [];
-
-    const tryInitAvatars = () => {
-        const avatars = grid.querySelectorAll('.user-avatar:not(.model-init)');
-        avatars.forEach((avatar) => {
-            avatar.classList.add('model-init');
-
-            const viewer = new PlayerModelViewer(avatar, {
-                width: avatar.clientWidth || 44,
-                height: avatar.clientHeight || 44,
-                autoRotate: false,
-                backgroundColor: null,
-                isProfile: false
-            });
-
-            viewers.push(viewer);
-        });
+    const tryInit = () => {
+        const avatars = grid.querySelectorAll('.user-avatar:not(.avatar-done)');
+        avatars.forEach(a => applyAvatar(a, 'bust'));
     };
 
-    tryInitAvatars();
+    playerRenderer.load().then(() => {
+        tryInit();
 
-    const observer = new MutationObserver(() => {
-        tryInitAvatars();
+        const observer = new MutationObserver(() => tryInit());
+        observer.observe(grid, { childList: true, subtree: true });
     });
+}
 
-    observer.observe(grid, { childList: true, subtree: true });
+// ============================================
+// Home Page
+// ============================================
 
-    window.addEventListener('beforeunload', () => {
-        viewers.forEach(v => v.destroy());
+function initHomeAvatar() {
+    const avatar = document.getElementById('home-avatar');
+    if (!avatar) return;
+
+    playerRenderer.load().then(() => {
+        applyAvatar(avatar, 'bust');
     });
 }
 
@@ -403,8 +322,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.querySelector('.profile-page')) {
         initProfileModel();
     }
-
     if (document.querySelector('.users-page')) {
         initUsersModels();
+    }
+    if (document.querySelector('.home-page')) {
+        initHomeAvatar();
     }
 });

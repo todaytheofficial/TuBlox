@@ -103,7 +103,7 @@ function getBadgeTooltip(badgeId) {
 
 function initTheme() {
     var savedTheme = localStorage.getItem('tublox-theme') || 'dark';
-    document.body.classList.remove('theme-dark', 'theme-super-dark');
+    document.body.classList.remove('theme-dark', 'theme-midnight');
     document.body.classList.add('theme-' + savedTheme);
 }
 

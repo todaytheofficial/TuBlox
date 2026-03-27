@@ -2,39 +2,31 @@
 // SETTINGS PAGE
 // ═══════════════════════════════════════════════════════════════
 
-let currentUser = null;
-
-// ═══════════════════════════════════════════════════════════════
-// INIT
-// ═══════════════════════════════════════════════════════════════
+let settingsUser = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
-    await loadUser();
-    initTheme();
-    initEventListeners();
+    await loadSettingsUser();
+    initSettingsTheme();
+    initSettingsEvents();
 });
 
-async function loadUser() {
+// ═══════════════════════════════════════════════════════════════
+// LOAD USER
+// ═══════════════════════════════════════════════════════════════
+
+async function loadSettingsUser() {
     try {
         const res = await fetch('/api/user');
         const data = await res.json();
-        
-        if (!data.success) {
-            window.location.href = '/auth';
-            return;
-        }
-        
-        currentUser = data.user;
-        
-        // Update UI
-        document.getElementById('current-username').textContent = currentUser.username;
-        document.getElementById('user-id').textContent = `#${currentUser.odilId}`;
-        document.getElementById('member-since').textContent = formatDate(currentUser.createdAt);
-        document.getElementById('last-login').textContent = formatDate(currentUser.lastSeen || currentUser.createdAt);
-        
-    } catch (err) {
-        console.error('Failed to load user:', err);
-        showToast('Failed to load user data', 'error');
+        if (!data.success) { window.location.href = '/auth'; return; }
+        settingsUser = data.user;
+
+        setText('display-username', settingsUser.username);
+        setText('display-id', '#' + settingsUser.odilId);
+        setText('display-joined', fmtDate(settingsUser.createdAt));
+        setText('display-last-active', fmtDate(settingsUser.lastSeen || settingsUser.createdAt));
+    } catch (e) {
+        showSettingsToast('Failed to load account', 'error');
     }
 }
 
@@ -42,307 +34,229 @@ async function loadUser() {
 // THEME
 // ═══════════════════════════════════════════════════════════════
 
-function initTheme() {
-    const savedTheme = localStorage.getItem('tublox-theme') || 'dark';
-    setTheme(savedTheme, false);
-    
-    // Mark active theme
-    document.querySelectorAll('.theme-option').forEach(option => {
-        const theme = option.dataset.theme;
-        const radio = option.querySelector('input[type="radio"]');
-        
-        if (theme === savedTheme) {
-            option.classList.add('active');
-            radio.checked = true;
-        }
-        
-        option.addEventListener('click', () => {
-            setTheme(theme, true);
+function initSettingsTheme() {
+    const saved = localStorage.getItem('tublox-theme') || 'dark';
+    applyThemeSelection(saved, false);
+
+    document.querySelectorAll('.settings-theme-option').forEach(opt => {
+        opt.addEventListener('click', () => {
+            applyThemeSelection(opt.dataset.theme, true);
         });
     });
 }
 
-function setTheme(theme, save = true) {
-    // Remove all theme classes
-    document.body.classList.remove('theme-dark', 'theme-super-dark');
-    
-    // Add new theme class
-    document.body.classList.add(`theme-${theme}`);
-    
-    // Update active state
-    document.querySelectorAll('.theme-option').forEach(option => {
-        option.classList.remove('active');
-        if (option.dataset.theme === theme) {
-            option.classList.add('active');
-            option.querySelector('input[type="radio"]').checked = true;
+function applyThemeSelection(theme, save) {
+    document.body.classList.remove('theme-dark', 'theme-midnight');
+    document.body.classList.add('theme-' + theme);
+
+    document.querySelectorAll('.settings-theme-option').forEach(opt => {
+        const radio = opt.querySelector('input[type="radio"]');
+        if (opt.dataset.theme === theme) {
+            opt.classList.add('active');
+            radio.checked = true;
+        } else {
+            opt.classList.remove('active');
+            radio.checked = false;
         }
     });
-    
+
     if (save) {
         localStorage.setItem('tublox-theme', theme);
-        showToast('Theme updated', 'success');
+        showSettingsToast('Theme updated');
     }
 }
 
 // ═══════════════════════════════════════════════════════════════
-// EVENT LISTENERS
+// EVENTS
 // ═══════════════════════════════════════════════════════════════
 
-function initEventListeners() {
-    // Change username
-    document.getElementById('change-username-btn').addEventListener('click', changeUsername);
-    document.getElementById('new-username').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') changeUsername();
-    });
-    
-    // Change password
-    document.getElementById('change-password-btn').addEventListener('click', changePassword);
-    
-    // Toggle password visibility
-    document.getElementById('toggle-password-btn').addEventListener('click', () => {
-        openVerifyModal();
-    });
-    
+function initSettingsEvents() {
+    // Username
+    byId('change-username-btn').addEventListener('click', changeUsername);
+    byId('new-username').addEventListener('keypress', e => { if (e.key === 'Enter') changeUsername(); });
+
+    // Password change
+    byId('change-password-btn').addEventListener('click', changePassword);
+
+    // Toggle password view
+    byId('toggle-password-btn').addEventListener('click', openVerifyModal);
+
     // Verify modal
-    document.getElementById('verify-password-btn').addEventListener('click', verifyAndShowPassword);
-    document.getElementById('verify-password-input').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') verifyAndShowPassword();
-    });
-    
-    // Modal backdrop click
+    byId('verify-password-btn').addEventListener('click', verifyAndReveal);
+    byId('verify-password-input').addEventListener('keypress', e => { if (e.key === 'Enter') verifyAndReveal(); });
     document.querySelector('#verify-modal .modal-backdrop').addEventListener('click', closeVerifyModal);
-    
+
     // Logout
-    document.getElementById('logout-btn').addEventListener('click', logout);
+    byId('logout-btn').addEventListener('click', async () => {
+        await fetch('/api/logout', { method: 'POST' });
+        window.location.href = '/';
+    });
 }
 
 // ═══════════════════════════════════════════════════════════════
-// USERNAME
+// CHANGE USERNAME
 // ═══════════════════════════════════════════════════════════════
 
 async function changeUsername() {
-    const newUsername = document.getElementById('new-username').value.trim().toLowerCase();
-    
-    if (!newUsername) {
-        showToast('Please enter a new username', 'error');
-        return;
-    }
-    
-    if (newUsername.length < 3 || newUsername.length > 20) {
-        showToast('Username must be 3-20 characters', 'error');
-        return;
-    }
-    
-    if (!/^[a-z0-9_]+$/.test(newUsername)) {
-        showToast('Username can only contain letters, numbers and underscore', 'error');
-        return;
-    }
-    
-    if (newUsername === currentUser.username) {
-        showToast('This is already your username', 'error');
-        return;
-    }
-    
-    const btn = document.getElementById('change-username-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="loader"></span>';
-    
+    const input = byId('new-username');
+    const val = input.value.trim().toLowerCase();
+    if (!val) return showSettingsToast('Enter a username', 'error');
+    if (val.length < 3 || val.length > 20) return showSettingsToast('Must be 3–20 characters', 'error');
+    if (!/^[a-z0-9_]+$/.test(val)) return showSettingsToast('Only letters, numbers, underscore', 'error');
+    if (val === settingsUser.username) return showSettingsToast('Already your username', 'error');
+
+    const btn = byId('change-username-btn');
+    setBtnLoading(btn, true);
+
     try {
         const res = await fetch('/api/user/username', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: newUsername })
+            body: JSON.stringify({ username: val })
         });
-        
         const data = await res.json();
-        
         if (data.success) {
-            currentUser.username = newUsername;
-            document.getElementById('current-username').textContent = newUsername;
-            document.getElementById('new-username').value = '';
-            showToast('Username changed successfully', 'success');
+            settingsUser.username = val;
+            setText('display-username', val);
+            input.value = '';
+            showSettingsToast('Username changed');
         } else {
-            showToast(data.message || 'Failed to change username', 'error');
+            showSettingsToast(data.message || 'Failed', 'error');
         }
-    } catch (err) {
-        console.error('Failed to change username:', err);
-        showToast('Failed to change username', 'error');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Change';
+    } catch (e) {
+        showSettingsToast('Connection error', 'error');
     }
+    setBtnLoading(btn, false, 'Save');
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PASSWORD
+// CHANGE PASSWORD
 // ═══════════════════════════════════════════════════════════════
 
 async function changePassword() {
-    const currentPassword = document.getElementById('current-password').value;
-    const newPassword = document.getElementById('new-password').value;
-    const confirmPassword = document.getElementById('confirm-password').value;
-    
-    if (!currentPassword || !newPassword || !confirmPassword) {
-        showToast('Please fill in all password fields', 'error');
-        return;
-    }
-    
-    if (newPassword.length < 6) {
-        showToast('New password must be at least 6 characters', 'error');
-        return;
-    }
-    
-    if (newPassword !== confirmPassword) {
-        showToast('New passwords do not match', 'error');
-        return;
-    }
-    
-    const btn = document.getElementById('change-password-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="loader"></span> Changing...';
-    
+    const cur = byId('current-password').value;
+    const nw = byId('new-password').value;
+    const conf = byId('confirm-password').value;
+
+    if (!cur || !nw || !conf) return showSettingsToast('Fill all fields', 'error');
+    if (nw.length < 6) return showSettingsToast('Min 6 characters', 'error');
+    if (nw !== conf) return showSettingsToast('Passwords don\'t match', 'error');
+
+    const btn = byId('change-password-btn');
+    setBtnLoading(btn, true);
+
     try {
         const res = await fetch('/api/user/password', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                currentPassword, 
-                newPassword 
-            })
+            body: JSON.stringify({ currentPassword: cur, newPassword: nw })
         });
-        
         const data = await res.json();
-        
         if (data.success) {
-            document.getElementById('current-password').value = '';
-            document.getElementById('new-password').value = '';
-            document.getElementById('confirm-password').value = '';
-            showToast('Password changed successfully', 'success');
+            byId('current-password').value = '';
+            byId('new-password').value = '';
+            byId('confirm-password').value = '';
+            showSettingsToast('Password changed');
         } else {
-            showToast(data.message || 'Failed to change password', 'error');
+            showSettingsToast(data.message || 'Failed', 'error');
         }
-    } catch (err) {
-        console.error('Failed to change password:', err);
-        showToast('Failed to change password', 'error');
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Change Password`;
+    } catch (e) {
+        showSettingsToast('Connection error', 'error');
     }
+    setBtnLoading(btn, false, 'Change Password');
 }
 
 // ═══════════════════════════════════════════════════════════════
-// VERIFY PASSWORD MODAL
+// VERIFY & REVEAL PASSWORD
 // ═══════════════════════════════════════════════════════════════
 
 function openVerifyModal() {
-    document.getElementById('verify-modal').classList.add('active');
-    document.getElementById('verify-password-input').value = '';
-    document.getElementById('verify-password-input').focus();
+    byId('verify-modal').classList.add('active');
+    const inp = byId('verify-password-input');
+    inp.value = '';
+    setTimeout(() => inp.focus(), 100);
 }
 
 function closeVerifyModal() {
-    document.getElementById('verify-modal').classList.remove('active');
+    byId('verify-modal').classList.remove('active');
 }
 
-async function verifyAndShowPassword() {
-    const password = document.getElementById('verify-password-input').value;
-    
-    if (!password) {
-        showToast('Please enter your password', 'error');
-        return;
-    }
-    
-    const btn = document.getElementById('verify-password-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="loader"></span>';
-    
+async function verifyAndReveal() {
+    const pw = byId('verify-password-input').value;
+    if (!pw) return showSettingsToast('Enter password', 'error');
+
+    const btn = byId('verify-password-btn');
+    setBtnLoading(btn, true);
+
     try {
         const res = await fetch('/api/user/verify-password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password })
+            body: JSON.stringify({ password: pw })
         });
-        
         const data = await res.json();
-        
         if (data.success) {
             closeVerifyModal();
-            
-            // Show password
-            const input = document.getElementById('current-password-display');
-            const iconEye = document.querySelector('.icon-eye');
-            const iconEyeOff = document.querySelector('.icon-eye-off');
-            
-            input.type = 'text';
-            input.value = password;
-            iconEye.style.display = 'none';
-            iconEyeOff.style.display = 'block';
-            
-            // Hide after 5 seconds
+            const display = byId('password-display');
+            const eyeOpen = document.querySelector('.eye-open');
+            const eyeClosed = document.querySelector('.eye-closed');
+
+            display.type = 'text';
+            display.value = pw;
+            eyeOpen.style.display = 'none';
+            eyeClosed.style.display = 'block';
+
+            showSettingsToast('Visible for 5 seconds');
+
             setTimeout(() => {
-                input.type = 'password';
-                input.value = '••••••••';
-                iconEye.style.display = 'block';
-                iconEyeOff.style.display = 'none';
+                display.type = 'password';
+                display.value = '••••••••';
+                eyeOpen.style.display = 'block';
+                eyeClosed.style.display = 'none';
             }, 5000);
-            
-            showToast('Password visible for 5 seconds', 'success');
         } else {
-            showToast(data.message || 'Incorrect password', 'error');
+            showSettingsToast(data.message || 'Wrong password', 'error');
         }
-    } catch (err) {
-        console.error('Failed to verify password:', err);
-        showToast('Failed to verify password', 'error');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Verify';
+    } catch (e) {
+        showSettingsToast('Connection error', 'error');
     }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// LOGOUT
-// ═══════════════════════════════════════════════════════════════
-
-async function logout() {
-    try {
-        await fetch('/api/logout', { method: 'POST' });
-        window.location.href = '/';
-    } catch (err) {
-        window.location.href = '/';
-    }
+    setBtnLoading(btn, false, 'Verify');
 }
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
 
-function formatDate(dateStr) {
-    if (!dateStr) return '—';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-    });
+function byId(id) { return document.getElementById(id); }
+function setText(id, text) { const el = byId(id); if (el) el.textContent = text; }
+
+function fmtDate(d) {
+    if (!d) return '—';
+    const date = new Date(d);
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function showToast(message, type = 'success') {
-    const container = document.getElementById('toast-container');
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            ${type === 'success' 
-                ? '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>'
-                : '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>'}
-        </svg>
-        <span>${message}</span>
-    `;
-    
-    container.appendChild(toast);
-    
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 200);
-    }, 3000);
+function setBtnLoading(btn, loading, label) {
+    if (loading) {
+        btn.disabled = true;
+        btn.dataset.originalHtml = btn.innerHTML;
+        btn.innerHTML = '<span class="loader"></span>';
+    } else {
+        btn.disabled = false;
+        btn.innerHTML = label || btn.dataset.originalHtml || 'Save';
+    }
+}
+
+function showSettingsToast(msg, type) {
+    if (window.toast) { window.toast(msg, type || 'success'); return; }
+    const c = byId('toast-container');
+    if (!c) return;
+    const el = document.createElement('div');
+    el.className = 'toast ' + (type || 'success');
+    const icon = type === 'error'
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+    el.innerHTML = icon + '<span>' + msg + '</span>';
+    c.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 200); }, 3000);
 }

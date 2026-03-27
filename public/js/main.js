@@ -895,6 +895,38 @@ document.addEventListener('DOMContentLoaded', function () {
         var logForm = document.getElementById('login-form');
         if (logForm) logForm.addEventListener('submit', login);
     }
+// В секцию DOMContentLoaded добавь:
+var landingRegForm = document.getElementById('landing-register-form');
+if (landingRegForm) {
+    landingRegForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        var btn = e.target.querySelector('button');
+        var html = btn.innerHTML;
+        btn.innerHTML = '<div class="loader"></div>';
+        btn.disabled = true;
+        try {
+            var res = await fetch('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: document.getElementById('landing-username').value,
+                    password: document.getElementById('landing-password').value
+                })
+            });
+            var data = await res.json();
+            if (data.success) {
+                toast('Account created! Welcome to TuBlox!');
+                setTimeout(function() { location.href = '/home'; }, 1000);
+            } else {
+                toast(data.message, 'error');
+            }
+        } catch (err) {
+            toast('Connection error', 'error');
+        }
+        btn.innerHTML = html;
+        btn.disabled = false;
+    });
+}
 
     if (document.querySelector('.home-page')) {
         loadUser();

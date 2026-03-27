@@ -2111,7 +2111,7 @@ app.post('/api/game/launch', authAPI, async (req, res) => {
         const launchToken = crypto.randomBytes(32).toString('hex');
         await LaunchToken.create({ token: launchToken, odilId: req.user.odilId, username: req.user.username, gameId: game.id });
         
-        const wsHost = process.env.RENDER_EXTERNAL_HOSTNAME || process.env.WS_HOST || 'tublox.onrender.com';
+        const wsHost = process.env.RENDER_EXTERNAL_HOSTNAME || process.env.WS_HOST || 'tublox.vercel.app';
         res.json({ success: true, token: launchToken, wsHost, wsPort: 443, gameId: game.id });
     } catch (err) {
         console.error(err);
@@ -2133,7 +2133,7 @@ app.get('/api/game/validate/:token', async (req, res) => {
         const game = await Game.findOne({ id: launchData.gameId });
         await LaunchToken.deleteOne({ token: req.params.token });
         
-        const wsHost = process.env.RENDER_EXTERNAL_HOSTNAME || process.env.WS_HOST || 'tublox.onrender.com';
+        const wsHost = process.env.RENDER_EXTERNAL_HOSTNAME || process.env.WS_HOST || 'tublox.vercel.app';
         res.json({ 
             success: true, 
             odilId: launchData.odilId, 
@@ -2357,8 +2357,8 @@ app.delete('/api/forum/post/:postId', authAPI, async (req, res) => {
 
 app.get('/api/version', (req, res) => {
     res.json({
-        version: "0.5.1",
-        downloadUrl: "https://tublox.onrender.com/download/TuClient.zip",
+        version: "0.5.2",
+        downloadUrl: "https://tublox.vercel.app/download/TuClient.zip",
         message: "Patch 0.5.1 - Fix"
     });
 });

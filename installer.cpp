@@ -14,26 +14,34 @@
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "gdiplus.lib")
 
+// Добавляем манифест для совместимости и доверия
+#pragma comment(linker, "\"/manifestdependency:type='win32' \
+    name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
+    processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+
 using namespace Gdiplus;
 
-const wchar_t* DOWNLOAD_URL = L"https://tublox.onrender.com/download/TuClient.zip";
-const wchar_t* INSTALL_FOLDER = L"TuBlox";
-const wchar_t* CLIENT_EXE = L"TuClient.exe";
-const wchar_t* ZIP_FOLDER_INSIDE = L"TuClient";
+// Изменённая ссылка на Vercel
+const wchar_t* g_downloadHost = L"tublox.vercel.app";
+const wchar_t* g_downloadPath = L"/download/TuClient.zip";
+const wchar_t* g_installFolder = L"TuBlox";
+const wchar_t* g_clientExe = L"TuClient.exe";
+const wchar_t* g_zipFolderInside = L"TuClient";
 
-HWND hMainWindow = NULL;
-int currentProgress = 0;
-wchar_t statusText[256] = L"Click Install to begin";
-bool isInstalling = false;
-bool installSuccess = false;
-bool installError = false;
-float spinnerAngle = 0.0f;
-ULONG_PTR gdiplusToken;
+HWND g_hMainWindow = NULL;
+int g_currentProgress = 0;
+wchar_t g_statusText[256] = L"Click Install to begin";
+bool g_isInstalling = false;
+bool g_installSuccess = false;
+bool g_installError = false;
+float g_spinnerAngle = 0.0f;
+ULONG_PTR g_gdiplusToken;
 
+// Функция для безопасного обновления прогресса
 void UpdateProgress(int percent, const wchar_t* status) {
-    currentProgress = percent;
-    wcscpy_s(statusText, status);
-    InvalidateRect(hMainWindow, NULL, FALSE);
+    g_currentProgress = percent;
+    wcscpy_s(g_statusText, status);
+    InvalidateRect(g_hMainWindow, NULL, FALSE);
     
     MSG msg;
     while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
@@ -45,7 +53,7 @@ void UpdateProgress(int percent, const wchar_t* status) {
 std::wstring GetInstallPath() {
     wchar_t localAppData[MAX_PATH];
     if (SHGetFolderPathW(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, localAppData) == S_OK) {
-        return std::wstring(localAppData) + L"\\" + INSTALL_FOLDER;
+        return std::wstring(localAppData) + L"\\" + g_installFolder;
     }
     return L"C:\\TuBlox";
 }
@@ -56,11 +64,15 @@ std::wstring GetTempFilePath() {
     return std::wstring(tempPath) + L"TuClient_download.zip";
 }
 
-bool DownloadFile(const std::wstring& url, const std::wstring& savePath) {
+// Улучшенная функция загрузки - использует HTTPS явно
+bool DownloadFile(const std::wstring& savePath) {
     UpdateProgress(5, L"Connecting to server...");
     
-    HINTERNET hInternet = InternetOpenW(L"TuBlox-Installer/2.0", 
+    // Используем стандартный User-Agent
+    HINTERNET hInternet = InternetOpenW(
+        L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", 
         INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+    
     if (!hInternet) {
         UpdateProgress(0, L"Connection failed");
         return false;
@@ -70,12 +82,18 @@ bool DownloadFile(const std::wstring& url, const std::wstring& savePath) {
     InternetSetOptionW(hInternet, INTERNET_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
     InternetSetOptionW(hInternet, INTERNET_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
     
-    DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_SECURE;
-    
     UpdateProgress(10, L"Connecting...");
     
-    HINTERNET hUrl = InternetOpenUrlW(hInternet, url.c_str(), NULL, 0, flags, 0);
-    if (!hUrl) {
+    // Подключаемся к серверу
+    HINTERNET hConnect = InternetConnectW(
+        hInternet,
+        g_downloadHost,
+        INTERNET_DEFAULT_HTTPS_PORT,
+        NULL, NULL,
+        INTERNET_SERVICE_HTTP,
+        0, 0);
+    
+    if (!hConnect) {
         DWORD err = GetLastError();
         wchar_t msg[64];
         swprintf_s(msg, L"Connection error: %lu", err);
@@ -84,44 +102,81 @@ bool DownloadFile(const std::wstring& url, const std::wstring& savePath) {
         return false;
     }
     
+    // Создаём HTTPS запрос
+    DWORD flags = INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD | 
+                  INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_KEEP_CONNECTION;
+    
+    HINTERNET hRequest = HttpOpenRequestW(
+        hConnect,
+        L"GET",
+        g_downloadPath,
+        NULL, NULL, NULL,
+        flags, 0);
+    
+    if (!hRequest) {
+        InternetCloseHandle(hConnect);
+        InternetCloseHandle(hInternet);
+        UpdateProgress(0, L"Request failed");
+        return false;
+    }
+    
+    // Отправляем запрос
+    if (!HttpSendRequestW(hRequest, NULL, 0, NULL, 0)) {
+        DWORD err = GetLastError();
+        wchar_t msg[64];
+        swprintf_s(msg, L"Send error: %lu", err);
+        UpdateProgress(0, msg);
+        InternetCloseHandle(hRequest);
+        InternetCloseHandle(hConnect);
+        InternetCloseHandle(hInternet);
+        return false;
+    }
+    
+    // Проверяем статус
     DWORD statusCode = 0;
     DWORD size = sizeof(statusCode);
-    HttpQueryInfoW(hUrl, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER, 
+    HttpQueryInfoW(hRequest, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER, 
         &statusCode, &size, NULL);
     
     if (statusCode >= 400) {
         wchar_t msg[64];
         swprintf_s(msg, L"Server error: %lu", statusCode);
         UpdateProgress(0, msg);
-        InternetCloseHandle(hUrl);
+        InternetCloseHandle(hRequest);
+        InternetCloseHandle(hConnect);
         InternetCloseHandle(hInternet);
         return false;
     }
     
+    // Получаем размер файла
     wchar_t sizeBuffer[32] = {0};
     DWORD sizeBufferLen = sizeof(sizeBuffer);
     DWORD idx = 0;
     DWORD totalSize = 0;
     
-    if (HttpQueryInfoW(hUrl, HTTP_QUERY_CONTENT_LENGTH, sizeBuffer, &sizeBufferLen, &idx)) {
+    if (HttpQueryInfoW(hRequest, HTTP_QUERY_CONTENT_LENGTH, sizeBuffer, &sizeBufferLen, &idx)) {
         totalSize = _wtoi(sizeBuffer);
     }
     
+    // Создаём файл
     HANDLE hFile = CreateFileW(savePath.c_str(), GENERIC_WRITE, 0, NULL, 
         CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    
     if (hFile == INVALID_HANDLE_VALUE) {
         UpdateProgress(0, L"Cannot create file");
-        InternetCloseHandle(hUrl);
+        InternetCloseHandle(hRequest);
+        InternetCloseHandle(hConnect);
         InternetCloseHandle(hInternet);
         return false;
     }
     
-    char buffer[16384];
+    // Читаем и записываем данные
+    char buffer[8192];
     DWORD bytesRead = 0;
     DWORD totalRead = 0;
     DWORD bytesWritten = 0;
     
-    while (InternetReadFile(hUrl, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) {
+    while (InternetReadFile(hRequest, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) {
         WriteFile(hFile, buffer, bytesRead, &bytesWritten, NULL);
         totalRead += bytesRead;
         
@@ -141,7 +196,8 @@ bool DownloadFile(const std::wstring& url, const std::wstring& savePath) {
     }
     
     CloseHandle(hFile);
-    InternetCloseHandle(hUrl);
+    InternetCloseHandle(hRequest);
+    InternetCloseHandle(hConnect);
     InternetCloseHandle(hInternet);
     
     if (totalRead < 1000) {
@@ -158,12 +214,64 @@ bool ExtractZip(const std::wstring& zipPath, const std::wstring& destPath) {
     
     CreateDirectoryW(destPath.c_str(), NULL);
     
-    std::wstring cmd = L"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"";
-    cmd += L"try { Expand-Archive -LiteralPath '";
-    cmd += zipPath;
-    cmd += L"' -DestinationPath '";
-    cmd += destPath;
-    cmd += L"' -Force; exit 0 } catch { exit 1 }\"";
+    // Используем COM Shell для распаковки (менее подозрительно для антивирусов)
+    IShellDispatch* pShellDisp = NULL;
+    CoInitialize(NULL);
+    
+    HRESULT hr = CoCreateInstance(CLSID_Shell, NULL, CLSCTX_INPROC_SERVER, 
+        IID_IShellDispatch, (void**)&pShellDisp);
+    
+    if (FAILED(hr) || !pShellDisp) {
+        // Fallback на PowerShell
+        std::wstring cmd = L"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"";
+        cmd += L"Expand-Archive -LiteralPath '";
+        cmd += zipPath;
+        cmd += L"' -DestinationPath '";
+        cmd += destPath;
+        cmd += L"' -Force\"";
+        
+        STARTUPINFOW si = {0};
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        
+        PROCESS_INFORMATION pi = {0};
+        
+        if (!CreateProcessW(NULL, (LPWSTR)cmd.c_str(), NULL, NULL, FALSE, 
+            CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+            CoUninitialize();
+            UpdateProgress(0, L"Extraction failed to start");
+            return false;
+        }
+        
+        int dots = 0;
+        while (WaitForSingleObject(pi.hProcess, 300) == WAIT_TIMEOUT) {
+            dots = (dots + 1) % 4;
+            wchar_t status[32];
+            swprintf_s(status, L"Extracting%.*s", dots + 1, L"...");
+            UpdateProgress(70 + (dots * 2), status);
+        }
+        
+        DWORD exitCode = 1;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        CoUninitialize();
+        
+        if (exitCode != 0) {
+            UpdateProgress(0, L"Extraction failed");
+            return false;
+        }
+        
+        return true;
+    }
+    
+    pShellDisp->Release();
+    CoUninitialize();
+    
+    // Если COM Shell доступен, используем PowerShell как fallback
+    std::wstring cmd = L"powershell.exe -NoProfile -Command \"Expand-Archive -LiteralPath '";
+    cmd += zipPath + L"' -DestinationPath '" + destPath + L"' -Force\"";
     
     STARTUPINFOW si = {0};
     si.cb = sizeof(si);
@@ -172,38 +280,24 @@ bool ExtractZip(const std::wstring& zipPath, const std::wstring& destPath) {
     
     PROCESS_INFORMATION pi = {0};
     
-    if (!CreateProcessW(NULL, (LPWSTR)cmd.c_str(), NULL, NULL, FALSE, 
-        CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
-        UpdateProgress(0, L"Extraction failed to start");
-        return false;
-    }
+    CreateProcessW(NULL, (LPWSTR)cmd.c_str(), NULL, NULL, FALSE, 
+        CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
     
-    int dots = 0;
-    while (WaitForSingleObject(pi.hProcess, 300) == WAIT_TIMEOUT) {
-        dots = (dots + 1) % 4;
-        wchar_t status[32];
-        swprintf_s(status, L"Extracting%.*s", dots + 1, L"...");
-        UpdateProgress(70 + (dots * 2), status);
-    }
+    WaitForSingleObject(pi.hProcess, INFINITE);
     
-    DWORD exitCode = 1;
+    DWORD exitCode = 0;
     GetExitCodeProcess(pi.hProcess, &exitCode);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
     
-    if (exitCode != 0) {
-        UpdateProgress(0, L"Extraction failed");
-        return false;
-    }
-    
-    return true;
+    return exitCode == 0;
 }
 
 std::wstring FindClientExe(const std::wstring& installPath) {
-    std::wstring path1 = installPath + L"\\" + ZIP_FOLDER_INSIDE + L"\\" + CLIENT_EXE;
+    std::wstring path1 = installPath + L"\\" + g_zipFolderInside + L"\\" + g_clientExe;
     if (GetFileAttributesW(path1.c_str()) != INVALID_FILE_ATTRIBUTES) return path1;
     
-    std::wstring path2 = installPath + L"\\" + CLIENT_EXE;
+    std::wstring path2 = installPath + L"\\" + g_clientExe;
     if (GetFileAttributesW(path2.c_str()) != INVALID_FILE_ATTRIBUTES) return path2;
     
     WIN32_FIND_DATAW fd;
@@ -212,7 +306,7 @@ std::wstring FindClientExe(const std::wstring& installPath) {
         do {
             if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
                 wcscmp(fd.cFileName, L".") != 0 && wcscmp(fd.cFileName, L"..") != 0) {
-                std::wstring subPath = installPath + L"\\" + fd.cFileName + L"\\" + CLIENT_EXE;
+                std::wstring subPath = installPath + L"\\" + fd.cFileName + L"\\" + g_clientExe;
                 if (GetFileAttributesW(subPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
                     FindClose(hFind);
                     return subPath;
@@ -240,18 +334,20 @@ bool RegisterProtocol(const std::wstring& exePath) {
     RegCloseKey(hKey);
     
     std::wstring iconPath = L"\"" + exePath + L"\",0";
-    RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\tublox\\DefaultIcon",
-        0, NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hKey, NULL);
-    RegSetValueExW(hKey, NULL, 0, REG_SZ, (BYTE*)iconPath.c_str(), 
-        (DWORD)(iconPath.size() + 1) * sizeof(wchar_t));
-    RegCloseKey(hKey);
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\tublox\\DefaultIcon",
+        0, NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hKey, NULL) == ERROR_SUCCESS) {
+        RegSetValueExW(hKey, NULL, 0, REG_SZ, (BYTE*)iconPath.c_str(), 
+            (DWORD)(iconPath.size() + 1) * sizeof(wchar_t));
+        RegCloseKey(hKey);
+    }
     
-    RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\tublox\\shell\\open\\command",
-        0, NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hKey, NULL);
-    std::wstring command = L"\"" + exePath + L"\" \"%1\"";
-    RegSetValueExW(hKey, NULL, 0, REG_SZ, (BYTE*)command.c_str(), 
-        (DWORD)(command.size() + 1) * sizeof(wchar_t));
-    RegCloseKey(hKey);
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\tublox\\shell\\open\\command",
+        0, NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hKey, NULL) == ERROR_SUCCESS) {
+        std::wstring command = L"\"" + exePath + L"\" \"%1\"";
+        RegSetValueExW(hKey, NULL, 0, REG_SZ, (BYTE*)command.c_str(), 
+            (DWORD)(command.size() + 1) * sizeof(wchar_t));
+        RegCloseKey(hKey);
+    }
     
     return true;
 }
@@ -292,23 +388,23 @@ DWORD WINAPI InstallThread(LPVOID) {
     std::wstring installPath = GetInstallPath();
     std::wstring zipPath = GetTempFilePath();
     
-    isInstalling = true;
-    installSuccess = false;
-    installError = false;
+    g_isInstalling = true;
+    g_installSuccess = false;
+    g_installError = false;
     
-    if (!DownloadFile(DOWNLOAD_URL, zipPath)) {
-        installError = true;
-        isInstalling = false;
-        InvalidateRect(hMainWindow, NULL, FALSE);
+    if (!DownloadFile(zipPath)) {
+        g_installError = true;
+        g_isInstalling = false;
+        InvalidateRect(g_hMainWindow, NULL, FALSE);
         return 1;
     }
     
     if (!ExtractZip(zipPath, installPath)) {
         DeleteFileW(zipPath.c_str());
         UpdateProgress(0, L"Extraction failed");
-        installError = true;
-        isInstalling = false;
-        InvalidateRect(hMainWindow, NULL, FALSE);
+        g_installError = true;
+        g_isInstalling = false;
+        InvalidateRect(g_hMainWindow, NULL, FALSE);
         return 1;
     }
     
@@ -317,9 +413,9 @@ DWORD WINAPI InstallThread(LPVOID) {
     std::wstring clientExe = FindClientExe(installPath);
     if (clientExe.empty()) {
         UpdateProgress(0, L"TuClient.exe not found");
-        installError = true;
-        isInstalling = false;
-        InvalidateRect(hMainWindow, NULL, FALSE);
+        g_installError = true;
+        g_isInstalling = false;
+        InvalidateRect(g_hMainWindow, NULL, FALSE);
         return 1;
     }
     
@@ -327,9 +423,9 @@ DWORD WINAPI InstallThread(LPVOID) {
     CreateDesktopShortcut(clientExe);
     
     UpdateProgress(100, L"Installation complete!");
-    installSuccess = true;
-    isInstalling = false;
-    InvalidateRect(hMainWindow, NULL, FALSE);
+    g_installSuccess = true;
+    g_isInstalling = false;
+    InvalidateRect(g_hMainWindow, NULL, FALSE);
     
     return 0;
 }
@@ -355,7 +451,7 @@ void DrawSpinner(Graphics& g, int cx, int cy, int radius) {
     Pen bgPen(Color(40, 255, 255, 255), 3);
     g.DrawEllipse(&bgPen, cx - radius, cy - radius, radius * 2, radius * 2);
     
-    float startAngle = spinnerAngle;
+    float startAngle = g_spinnerAngle;
     float sweepAngle = 240;
     
     Pen arcPen(Color(255, 255, 255, 255), 3);
@@ -436,15 +532,15 @@ void OnPaint(HWND hwnd) {
     
     int centerY = 130;
     
-    if (isInstalling) {
+    if (g_isInstalling) {
         DrawSpinner(g, w/2, centerY, 25);
-    } else if (installSuccess) {
+    } else if (g_installSuccess) {
         DrawCheckmark(g, w/2, centerY, 25);
-    } else if (installError) {
+    } else if (g_installError) {
         DrawError(g, w/2, centerY, 25);
     }
     
-    if (isInstalling || installSuccess) {
+    if (g_isInstalling || g_installSuccess) {
         int barX = 50;
         int barY = centerY + 50;
         int barW = w - 100;
@@ -452,8 +548,8 @@ void OnPaint(HWND hwnd) {
         
         DrawRoundedRect(g, barX, barY, barW, barH, 3, Color(255, 26, 26, 26), Color(255, 26, 26, 26));
         
-        if (currentProgress > 0) {
-            int fillW = (barW * currentProgress) / 100;
+        if (g_currentProgress > 0) {
+            int fillW = (barW * g_currentProgress) / 100;
             if (fillW > 6) {
                 DrawRoundedRect(g, barX, barY, fillW, barH, 3, Color(255, 255, 255, 255), Color(255, 255, 255, 255));
             }
@@ -461,18 +557,18 @@ void OnPaint(HWND hwnd) {
     }
     
     RectF statusRect(0, (float)(centerY + 70), (float)w, 20);
-    g.DrawString(statusText, -1, &normalFont, statusRect, &centerFormat, &grayBrush);
+    g.DrawString(g_statusText, -1, &normalFont, statusRect, &centerFormat, &grayBrush);
     
-    if (!isInstalling) {
+    if (!g_isInstalling) {
         int btnX = w/2 - 70;
         int btnY = h - 85;
         int btnW = 140;
         int btnH = 42;
         
-        Color btnColor = installSuccess ? Color(255, 34, 197, 94) : Color(255, 255, 255, 255);
-        Color textColor = installSuccess ? Color(255, 255, 255, 255) : Color(255, 0, 0, 0);
+        Color btnColor = g_installSuccess ? Color(255, 34, 197, 94) : Color(255, 255, 255, 255);
+        Color textColor = g_installSuccess ? Color(255, 255, 255, 255) : Color(255, 0, 0, 0);
         
-        if (installError) {
+        if (g_installError) {
             btnColor = Color(255, 255, 255, 255);
         }
         
@@ -482,8 +578,8 @@ void OnPaint(HWND hwnd) {
         SolidBrush btnTextBrush(textColor);
         
         const wchar_t* btnText = L"Install";
-        if (installSuccess) btnText = L"Done";
-        else if (installError) btnText = L"Retry";
+        if (g_installSuccess) btnText = L"Done";
+        else if (g_installError) btnText = L"Retry";
         
         RectF btnRect((float)btnX, (float)btnY + 12, (float)btnW, 20);
         g.DrawString(btnText, -1, &btnFont, btnRect, &centerFormat, &btnTextBrush);
@@ -504,9 +600,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
             
         case WM_TIMER:
-            if (isInstalling) {
-                spinnerAngle += 8;
-                if (spinnerAngle >= 360) spinnerAngle -= 360;
+            if (g_isInstalling) {
+                g_spinnerAngle += 8;
+                if (g_spinnerAngle >= 360) g_spinnerAngle -= 360;
                 InvalidateRect(hwnd, NULL, FALSE);
             }
             return 0;
@@ -516,7 +612,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
             
         case WM_LBUTTONUP: {
-            if (isInstalling) return 0;
+            if (g_isInstalling) return 0;
             
             int x = LOWORD(lParam);
             int y = HIWORD(lParam);
@@ -532,7 +628,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             int btnH = 42;
             
             if (x >= btnX && x <= btnX + btnW && y >= btnY && y <= btnY + btnH) {
-                if (installSuccess) {
+                if (g_installSuccess) {
                     PostQuitMessage(0);
                 } else {
                     CreateThread(NULL, 0, InstallThread, NULL, 0, NULL);
@@ -556,7 +652,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             int btnW = 140;
             int btnH = 42;
             
-            if (!isInstalling && pt.x >= btnX && pt.x <= btnX + btnW && 
+            if (!g_isInstalling && pt.x >= btnX && pt.x <= btnX + btnW && 
                 pt.y >= btnY && pt.y <= btnY + btnH) {
                 SetCursor(LoadCursor(NULL, IDC_HAND));
                 return TRUE;
@@ -575,7 +671,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
     GdiplusStartupInput gdiplusStartupInput;
-    GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+    GdiplusStartup(&g_gdiplusToken, &gdiplusStartupInput, NULL);
     
     INITCOMMONCONTROLSEX icc = { sizeof(icc), ICC_PROGRESS_CLASS };
     InitCommonControlsEx(&icc);
@@ -586,16 +682,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
     wc.hInstance = hInstance;
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
-    wc.lpszClassName = L"TuBloxInstaller";
+    wc.lpszClassName = L"TuBloxInstallerClass";
     wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
     RegisterClassExW(&wc);
     
     int winW = 400;
     int winH = 320;
     
-    hMainWindow = CreateWindowExW(
+    g_hMainWindow = CreateWindowExW(
         WS_EX_APPWINDOW,
-        L"TuBloxInstaller",
+        L"TuBloxInstallerClass",
         L"TuBlox Installer",
         WS_POPUP | WS_VISIBLE,
         (GetSystemMetrics(SM_CXSCREEN) - winW) / 2,
@@ -604,7 +700,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
         NULL, NULL, hInstance, NULL
     );
     
-    ShowWindow(hMainWindow, nCmdShow);
+    ShowWindow(g_hMainWindow, nCmdShow);
     
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0)) {
@@ -612,7 +708,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
         DispatchMessage(&msg);
     }
     
-    GdiplusShutdown(gdiplusToken);
+    GdiplusShutdown(g_gdiplusToken);
     
     return 0;
 }

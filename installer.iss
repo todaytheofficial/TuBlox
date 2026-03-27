@@ -7,6 +7,10 @@
 [Setup]
 AppName=TuBlox
 AppVersion={#TuBloxVersion}
+AppPublisher=TuBlox Corporation
+AppPublisherURL=https://tublox.vercel.app
+AppSupportURL=https://tublox.vercel.app
+AppUpdatesURL=https://tublox.vercel.app
 DefaultDirName={localappdata}\TuBlox
 DefaultGroupName=TuBlox
 OutputBaseFilename=TuBloxSetup
@@ -15,6 +19,12 @@ SolidCompression=yes
 PrivilegesRequired=lowest
 DirExistsWarning=no
 SetupIconFile=icon.ico
+VersionInfoVersion={#TuBloxVersion}
+VersionInfoCompany=TuBlox Corporation
+VersionInfoDescription=TuBlox Installer
+VersionInfoProductName=TuBlox
+VersionInfoProductVersion={#TuBloxVersion}
+VersionInfoCopyright=Copyright 2026 TuBlox Corporation
 
 [Registry]
 Root: HKCU; Subkey: "Software\Classes\tublox"; ValueType: string; ValueName: ""; ValueData: "URL:TuBlox Protocol"
@@ -49,9 +59,6 @@ end;
 function ExtractZip(ZipPath: string; DestDir: string): Boolean;
 var
   ResultCode: Integer;
-  ScriptFile: string;
-  PSScript: string;
-  Lines: TArrayOfString;
 begin
   Result := False;
 
@@ -63,15 +70,21 @@ begin
 
   ForceDirectories(DestDir);
 
-  ScriptFile := ExpandConstant('{tmp}\extract.ps1');
-  PSScript := 'Expand-Archive -Path "' + ZipPath + '" -DestinationPath "' + DestDir + '" -Force';
+  // Сначала пробуем встроенный tar (Windows 10+) - без PowerShell
+  if Exec(ExpandConstant('{sys}\cmd.exe'),
+    '/c tar -xf "' + ZipPath + '" -C "' + DestDir + '"',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    if ResultCode = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
 
-  SetArrayLength(Lines, 1);
-  Lines[0] := PSScript;
-  SaveStringsToFile(ScriptFile, Lines, False);
-
+  // Fallback - PowerShell если tar недоступен
   if Exec('powershell.exe',
-    '-NoProfile -ExecutionPolicy Bypass -File "' + ScriptFile + '"',
+    '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath \"' + ZipPath + '\" -DestinationPath \"' + DestDir + '\" -Force"',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     if ResultCode = 0 then
@@ -80,20 +93,20 @@ begin
       MsgBox('Extraction failed with code: ' + IntToStr(ResultCode), mbError, MB_OK);
   end
   else
-    MsgBox('Failed to launch PowerShell.', mbError, MB_OK);
+    MsgBox('Failed to extract files.', mbError, MB_OK);
 end;
 
 procedure CreateShortcuts();
 var
   ResultCode: Integer;
-  ScriptFile: string;
   AppDir: string;
   DesktopPath: string;
   Lines: TArrayOfString;
+  ScriptFile: string;
 begin
   AppDir      := ExpandConstant('{app}');
   DesktopPath := ExpandConstant('{userdesktop}');
-  ScriptFile  := ExpandConstant('{tmp}\shortcut.ps1');
+  ScriptFile  := ExpandConstant('{tmp}\sc.ps1');
 
   SetArrayLength(Lines, 5);
   Lines[0] := '$ws = New-Object -ComObject WScript.Shell';
@@ -105,11 +118,10 @@ begin
   SaveStringsToFile(ScriptFile, Lines, False);
 
   Exec('powershell.exe',
-    '-NoProfile -ExecutionPolicy Bypass -File "' + ScriptFile + '"',
+    '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + ScriptFile + '"',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
-// Срабатывает ОДИН РАЗ при нажатии Install
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ClientZip: string;
@@ -123,7 +135,7 @@ begin
     // 1. Удаляем старое
     CleanAppDirectory();
 
-    // 2. Загрузка - одна кнопка один раз
+    // 2. Загрузка
     DownloadPage.Clear;
     DownloadPage.Add(
       'https://tublox.vercel.app/download/TuClient.zip',
@@ -143,7 +155,7 @@ begin
     if not ExtractZip(ClientZip, AppDir) then
       Exit;
 
-    // 4. Ярлыки (.lnk)
+    // 4. Ярлыки
     CreateShortcuts();
 
     // 5. Реестр

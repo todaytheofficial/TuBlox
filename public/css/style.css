@@ -649,6 +649,8 @@ a {
    AUTH PAGE
    ============================================ */
 
+
+/* Исправление auth страницы */
 .auth-page {
     position: relative;
     min-height: 100vh;
@@ -678,19 +680,21 @@ a {
     -webkit-backdrop-filter: blur(20px);
 }
 
+
 .auth-container {
     position: relative;
     z-index: 10;
     width: 100%;
+    min-height: 100vh;
     display: flex;
     align-items: center;
-    justify-content: center;  /* ← убедись что это есть */
+    justify-content: center;
     padding: 24px;
-    min-height: 100vh;        /* ← добавь это */
 }
+
 .auth-card {
     width: 100%;
-    max-width: 380px;
+    max-width: 400px;
     padding: 40px 36px;
     background: rgba(13,13,24,0.9);
     border: 1px solid var(--border);
@@ -698,6 +702,9 @@ a {
     backdrop-filter: blur(40px);
     -webkit-backdrop-filter: blur(40px);
     box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+    /* Убираем position absolute если было */
+    position: relative;
+    margin: auto;
 }
 
 .auth-header {

@@ -215,7 +215,7 @@ const BADGES = {
     'Staff': {
         id: 'Staff', name: 'Staff', description: 'TuBlox Staff Member',
         icon: '/img/badges/Staff.svg', color: '#ff4444', rarity: 'legendary',
-        holders: [1, 5]
+        holders: [1, 4]
     },
     'TuBloxUser': {
         id: 'TuBloxUser', name: 'TuBlox User', description: 'Verified TuBlox Player',
